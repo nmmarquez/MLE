@@ -1,0 +1,143 @@
+---
+title: "Homework 1"
+author: "Neal Marquez"
+date: "September 28, 2018"
+output: html_document
+---
+
+# Homework 1  
+
+```{R loads, message=F,echo=F,warning=F}
+library(tidyverse)
+```
+
+## Question 1  
+The fraction of males in a given population is 0.49. A) What is the probability of sampling 22 males in a random sample of size 30? How about sampling 16 males in a random sample of size 30? Calculate your answers by hand. B) Next, verify your results using R's built-in functions for calculating probabilities. C) Finally, write R code to simulate each of these scenarios many times, and report the results of your simulations.  
+
+### A
+
+```{r byhand}
+handBinom <- function(k,n,p){
+    factorial(n) / (factorial(k) * factorial(n-k)) * p^k * (1-p)^(n-k)
+}
+```
+
+$$
+\text{Pr}(k|n,p) = \underbrace{{n \choose k}}_{\text{# of ways to get k}} \times \underbrace{\prod f_{\text{Bern}}(x_{ij}|p)}_{\text{Pr(getting k)}} \\
+\text{Pr}(k|n,p) = \frac{n!}{k!(n-k)!} p^k (1-p)^{n-k} \\
+\text{Pr}(22|30,.49) = \frac{30!}{22!(30-22)!} .49^{22} (1-.49)^{30-22} \\
+\text{Pr}(22|30,.49) \approx
+$$
+
+```{r 1a1}
+cat(round(handBinom(22, 30, .49), 6))
+```
+
+$$
+\text{Pr}(16|30,.49) = \frac{30!}{16!(30-16)!} .49^{16} (1-.49)^{30-16} \\
+\text{Pr}(16|30,.49) \approx 
+$$
+
+```{r 1a2}
+cat(round(handBinom(16, 30, .49), 6))
+```
+
+### B
+
+```{r Part1B}
+cat(round(dbinom(22, size=30, prob=.49), digits=6))
+cat(round(dbinom(16, size=30, prob=.49), digits=6))
+```
+
+### C
+```{r Part1Cstar}
+n <- 10000
+singleDF <- tibble(out=rbinom(n=n, size=30, prob=.49), sim=1:n) %>%
+    mutate(`P(x=22)`=cummean(out == 22), `P(x=16)`=cummean(out == 16)) %>%
+    gather(key="Statistic", value="Probability", -out, -sim)
+
+singleDF %>%
+    ggplot(aes(x=sim, y=Probability, group=Statistic, color=Statistic)) +
+    geom_line() +
+    theme_classic() +
+    geom_hline(yintercept=dbinom(22, size=30, prob=.49), linetype=3) +
+    geom_hline(yintercept=dbinom(16, size=30, prob=.49), linetype=3) +
+    labs(x="Simulation") + 
+    ggtitle("Cumulative Estimate of Probability of Outcome")
+```
+
+
+```{r Part1C}
+m <- 1000 # Number of simulations (for plotting distribution)
+n <- 10000 # number of replications (for calculating individual probs)
+tibble(
+    Probability=t(sapply(1:m, function(x){
+        # Replicate binomial distribution n times with size k and prob .49
+        sims <- rbinom(n=n, size=30, prob=.49)
+        # calculate probabilty of being  
+        c(sum(sims == 22) / n, sum(sims == 16) / n)})) %>%
+        c,
+    Count=rep(c("22", "16"), each=m)) %>%
+    ggplot(aes(x=Probability, fill=Count)) +
+    geom_density() +
+    facet_wrap(~Count, scales="free") +
+    theme_classic() +
+    labs(y="Desnity", title="Probabilities of Counts for 1000 Simulations")
+```
+
+## Question 2
+
+Consider two random variables X and Y. X can take values equal to 1, 2, or 3, and Y can take values equal to 1, 2, 3, 4. We know the following joint probabilities:
+
+$f_{X,Y}(1,1)=.05$ $f_{X,Y}(2,1)=.07$ $f_{X,Y}(3,1)=.06$  
+$f_{X,Y}(1,2)=.08$ $f_{X,Y}(2,2)=\text{???}$ $f_{X,Y}(3,2)=.07$  
+$f_{X,Y}(1,3)=.13$ $f_{X,Y}(2,3)=.16$ $f_{X,Y}(3,3)=.15$  
+$f_{X,Y}(1,4)=.03$ $f_{X,Y}(2,4)=.04$ $f_{X,Y}(3,4)=.06$  
+
+Using what you know about the relationships between marginal, conditional, and joint probability functions and the information above, compute the following quantities by hand (you should check your results in `R`):
+
+```{R}
+probs <- c(.05, .08, .13, .03, .07, NA, .16, .04, .06, .07, .15, .06) %>%
+    matrix(4, 3, dimnames=list(paste0("y=", 1:4), paste0("x=", 1:3)))
+
+probs["y=2","x=2"] <- 1 - sum(probs, na.rm=T)
+
+probs
+```
+
+```{R}
+## Hand calculations
+(hcalc <- c(
+    a=.05 + .08 + .13 + .03,
+    b=.07 + .10 + .16 + .04,
+    c=.06 + .07 + .15 + .06,
+    d=.05 + .07 + .06,
+    e=.08 + .10 + .07,
+    f=.13 + .16 + .15,
+    g=.03 + .04 + .06,
+    h=.1,
+    i=.08 / sum(.08 + .10 + .07),
+    j=.06 / sum(.03 + .04 + .06),
+    k=.06 / sum(.06 + .07 + .15 + .06),
+    l=.10 / sum(.07 + .10 + .16 + .04)
+))
+
+## R calculations
+(rcalc <- c(
+    a=sum(probs[,"x=1"]),
+    b=sum(probs[,"x=2"]),
+    c=sum(probs[,"x=3"]),
+    d=sum(probs["y=1",]),
+    e=sum(probs["y=2",]),
+    f=sum(probs["y=3",]),
+    g=sum(probs["y=4",]),
+    h=.1,
+    i=probs["y=2","x=1"] / sum(probs["y=2",]),
+    j=probs["y=4","x=3"] / sum(probs["y=4",]),
+    k=probs["y=4","x=3"] / sum(probs[,"x=3"]),
+    l=probs["y=2","x=2"] / sum(probs[,"x=2"])
+))
+
+cat(all.equal(hcalc, rcalc))
+
+```
