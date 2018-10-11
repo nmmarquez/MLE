@@ -1,0 +1,14 @@
+---
+title: "Homework 2"
+author: "Neal Marquez"
+date: "October 11, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+$$
+\prod_{i=1}^{N}\lambda^{y_{i}} e^{-\lambda}(y_i!)^{-1}
+$$

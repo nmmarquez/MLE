@@ -2,12 +2,13 @@
 title: "Homework 1"
 author: "Neal Marquez"
 date: "September 28, 2018"
-output: html_document
+output: pdf_document
 ---
 
 # Homework 1  
 
 ```{R loads, message=F,echo=F,warning=F}
+set.seed(123)
 library(tidyverse)
 ```
 
@@ -16,6 +17,8 @@ The fraction of males in a given population is 0.49. A) What is the probability 
 
 ### A
 
+Using the function below we can calculate the probability of observing $k$ males in a sample of $n$ individuals if the probability of selecting a male in the total population is $p$. In our test case the $n$ is always $30$, $p$ is always $.49$, and $k$ is either $22$ or $16$. The function follows the formula presented below.
+
 ```{r byhand}
 handBinom <- function(k,n,p){
     factorial(n) / (factorial(k) * factorial(n-k)) * p^k * (1-p)^(n-k)
@@ -23,9 +26,15 @@ handBinom <- function(k,n,p){
 ```
 
 $$
-\text{Pr}(k|n,p) = \underbrace{{n \choose k}}_{\text{# of ways to get k}} \times \underbrace{\prod f_{\text{Bern}}(x_{ij}|p)}_{\text{Pr(getting k)}} \\
-\text{Pr}(k|n,p) = \frac{n!}{k!(n-k)!} p^k (1-p)^{n-k} \\
-\text{Pr}(22|30,.49) = \frac{30!}{22!(30-22)!} .49^{22} (1-.49)^{30-22} \\
+\text{Pr}(k|n,p) = \underbrace{{n \choose k}}_{\text{\# of ways to get k}} \times \underbrace{\prod f_{\text{Bern}}(x_{ij}|p)}_{\text{Pr(getting k)}}
+$$
+$$
+\text{Pr}(k|n,p) = \frac{n!}{k!(n-k)!} p^k (1-p)^{n-k}
+$$
+$$
+\text{Pr}(22|30,.49) = \frac{30!}{22!(30-22)!} .49^{22} (1-.49)^{30-22}
+$$
+$$
 \text{Pr}(22|30,.49) \approx
 $$
 
@@ -35,7 +44,7 @@ cat(round(handBinom(22, 30, .49), 6))
 
 $$
 \text{Pr}(16|30,.49) = \frac{30!}{16!(30-16)!} .49^{16} (1-.49)^{30-16} \\
-\text{Pr}(16|30,.49) \approx 
+\text{Pr}(16|30,.49) \approx
 $$
 
 ```{r 1a2}
@@ -44,16 +53,21 @@ cat(round(handBinom(16, 30, .49), 6))
 
 ### B
 
+Using the `R` built in functions we find that we get the same results.
+
 ```{r Part1B}
 cat(round(dbinom(22, size=30, prob=.49), digits=6))
 cat(round(dbinom(16, size=30, prob=.49), digits=6))
 ```
 
 ### C
+
+We can try and simulate the values in a few different ways in order to get at the true underlying probability. One way is to take a set of $n$ simulations from the Binomial distribution each with $30$ flips and indicate each time an observation equaled either 22 or 16 with a 1 in two separate vectors. We then can take the cumulative mean for each of these vectors and see how the means converge to the truth as the sample size increases.
+
 ```{r Part1Cstar}
 n <- 10000
 singleDF <- tibble(out=rbinom(n=n, size=30, prob=.49), sim=1:n) %>%
-    mutate(`P(x=22)`=cummean(out == 22), `P(x=16)`=cummean(out == 16)) %>%
+    mutate(`Pr(x=22)`=cummean(out == 22), `Pr(x=16)`=cummean(out == 16)) %>%
     gather(key="Statistic", value="Probability", -out, -sim)
 
 singleDF %>%
@@ -62,10 +76,11 @@ singleDF %>%
     theme_classic() +
     geom_hline(yintercept=dbinom(22, size=30, prob=.49), linetype=3) +
     geom_hline(yintercept=dbinom(16, size=30, prob=.49), linetype=3) +
-    labs(x="Simulation") + 
+    labs(x="Simulation") +
     ggtitle("Cumulative Estimate of Probability of Outcome")
 ```
 
+Notice that for the higher probability result we have more variation in the estimate across simulations which is a consequence of the binomial distributions variance. We can also estimate the true mean by taking $n$ simulations where we take $m$ draws from the binomial distribution of $k$ trails and calculate the proportion of values that are equal to either 16 or 22. In the end we are left with a set of estimates that are approximately normally distributed around the true value.
 
 ```{r Part1C}
 m <- 1000 # Number of simulations (for plotting distribution)
@@ -96,6 +111,8 @@ $f_{X,Y}(1,4)=.03$ $f_{X,Y}(2,4)=.04$ $f_{X,Y}(3,4)=.06$
 
 Using what you know about the relationships between marginal, conditional, and joint probability functions and the information above, compute the following quantities by hand (you should check your results in `R`):
 
+We will place the results of the probabilities presented in a matrix. The last missing cell can be calculated by taking the some of the other probabilities and subtracting that value from 1.
+
 ```{R}
 probs <- c(.05, .08, .13, .03, .07, NA, .16, .04, .06, .07, .15, .06) %>%
     matrix(4, 3, dimnames=list(paste0("y=", 1:4), paste0("x=", 1:3)))
@@ -104,6 +121,8 @@ probs["y=2","x=2"] <- 1 - sum(probs, na.rm=T)
 
 probs
 ```
+
+Calculations by hand are done by taking the appropriate cells that relate to certain outcomes but we may also use `R` in order to easily calculate marginal probabilities by taking row sums and column sums. A check at the end shows us that all the results are the same.
 
 ```{R}
 ## Hand calculations
@@ -121,7 +140,8 @@ probs
     k=.06 / sum(.06 + .07 + .15 + .06),
     l=.10 / sum(.07 + .10 + .16 + .04)
 ))
-
+```
+```{R}
 ## R calculations
 (rcalc <- c(
     a=sum(probs[,"x=1"]),

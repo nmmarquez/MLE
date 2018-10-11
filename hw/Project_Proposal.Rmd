@@ -1,0 +1,19 @@
+---
+title: 'Project Proposal'
+author: "Neal Marquez & Sara LaPlante"
+output: pdf_document
+---
+
+***
+
+
+The data we're interested in analyzing come from a Demographic and Health Survey run by USAID in the Dominican Republic (DR) as well as DR census data. The standard survey, which is a nationally-representative survey of households, collects data on a wide range of health outcomes. For the purpose of our analysis, we will focus on mortality for children under the age of five. 
+
+The outcome of interest is whether or not a child under five has died, which will be distributed as a Bernoulli random variable with some nonzero probability of death. However, the data from USAID and the census come at different geographic levels which are sometimes aggregated to an adminstrative level and sometimes in the form of point data from gps of where a survey was conducted. The goal of our analysis is to predict the risk of mortality across the Dominican Republic by using a logistic regression that includes traditional covariates as well as a measure of distance from known point data to account for correlation across space. The latter should help address our concerns that the observations in the survey are not independent, since mortality rates are heavily dependent upon geography. Other covariates we might include are: weather patterns, poverty levels, and person-specific characteristics (e.g. race). 
+
+
+```{r, message=FALSE, warning=FALSE, fig.height = 3, fig.width = 3, fig.align = "center"}
+
+
+```
+
