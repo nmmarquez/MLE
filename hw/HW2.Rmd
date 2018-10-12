@@ -14,6 +14,13 @@ library(latex2exp)
 # Question 1
 Consider the following dataset: y = (1, 0, 0, 1, 0, 0, 0, 0), which happens to be a series of independent realizations of a Bernoulli distributed random variable. Plot the likelihood function for the Bernoulli parameter $\pi$ given y. 1 If the experiment were repeated, roughly what fraction of the observations would you expect to be successes (y = 1)? Why?
 
+We can calculate the likelihood function by using the probability mass function of the Bernoulli distribution which can be expressed as 
+
+$$
+(1-\pi)^{1-x}\pi^x
+$$
+The probability mass function can then be calculated for each observation for a specified value of $\pi$ and multiplied together in order to get a likelihood for $\pi$. The plot below shows the process of calculating the likelihood for nearly 1000 values evenly spaced between 0 and 1. We see that the peak of the profile likelihood is at .25 which is not only the mean of our data but also the MLE for the parameter. This would mean that we would expect $\frac{1}{4}$ of future observations to be 1.
+
 ```{R bernoulli}
 dbernoulli <- function(x, p){
     (1-p)^(1-x) * p^(x)
@@ -21,7 +28,7 @@ dbernoulli <- function(x, p){
 
 y <- c(1, 0, 0, 1, 0, 0, 0, 0)
 
-data.frame(pi=seq(.01, .99, by=.01)) %>%
+data.frame(pi=seq(.001, .999, by=.001)) %>%
     mutate(lik=sapply(pi, function(p) prod(dbernoulli(y, p)))) %>%
     ggplot(aes(x=pi, y=lik)) +
     geom_line() +
@@ -43,48 +50,41 @@ $$
 ### Derivation  
 
 $$
-\text{log} \Big( \prod_{i=1}^{N}\lambda^{y_{i}} e^{-\lambda}(y_i!)^{-1} \Big)
+\text{log} \Big( \prod_{i=1}^{N}\lambda_{i}^{y_{i}} e^{-\lambda_{i}}(y_i!)^{-1} \Big)
 $$
 $$
-\sum_{i=1}^{N}\text{log}(\lambda^{y_{i}} e^{-\lambda}(y_i!)^{-1})
+\sum_{i=1}^{N}\text{log}(\lambda_i^{y_{i}} e^{-\lambda_i}(y_i!)^{-1})
 $$
-
 $$
-\sum_{i=1}^{N}\text{log}(\lambda^{y_{i}}) + log(e^{-\lambda}) + log((y_i!)^{-1})
+\sum_{i=1}^{N}\text{log}(\lambda_i^{y_{i}}) + log(e^{-\lambda_i}) + log((y_i!)^{-1})
 $$
-
 $$
-\sum_{i=1}^{N}y_{i}\text{log}(\lambda) - \lambda - log(y_i!)
+\sum_{i=1}^{N}y_{i}\text{log}(\lambda_i) - \lambda_i - log(y_i!)
 $$
-
 $$
--N \lambda + \text{log}(\lambda)\sum_{i=1}^{N}y_{i} - \sum_{i=1}^{N} log(y_i!)
- \propto -N \lambda + \text{log}(\lambda)\sum_{i=1}^{N}y_{i}
+\propto \sum_{i=1}^{N}y_{i}\text{log}(\lambda_i) - \lambda_i
 $$
 
 ## Section B  
-Suppose that for periods $i \in \{1, . . . , i, . . . , n\}$,each of (potentially varying) length $t_i$ , we observe counts $y_i$. We would like to use the Poissondistribution to model these data, but an assumption of the Poisson distribution(and hence the Poisson regression model) is that the periods observed are of equal length. Relax this assumption, and revise your derivation in part a accordingly.
+Suppose that for periods $i \in \{1, . . . , i, . . . , n\}$, each of (potentially varying) length $t_i$, we observe counts $y_i$. We would like to use the Poisson distribution to model these data, but an assumption of the Poisson distribution(and hence the Poisson regression model) is that the periods observed are of equal length. Relax this assumption, and revise your derivation in part a accordingly.
 
 ### Derivation Revised
 
 $$
-\text{log} \Big( \prod_{i=1}^{N}(t_{i}\lambda)^{y_{i}} e^{-\lambda t_{i}}(y_i!)^{-1} \Big)
-$$
-$$
-\sum_{i=1}^{N}\text{log}((t_{i}\lambda)^{y_{i}} e^{-\lambda t_{i}}(y_i!)^{-1})
+\text{log} \Big( \prod_{i=1}^{N} t_i \lambda_{i}^{y_{i}} e^{-t_i \lambda_{i}}(y_i!)^{-1} \Big)
 $$
 
 $$
-\sum_{i=1}^{N}\text{log}((t_{i}\lambda)^{y_{i}}) + log(e^{-\lambda t_i}) + log((y_i!)^{-1})
+\sum_{i=1}^{N}\text{log}((t_i\lambda_i)^{y_{i}} e^{-t_i \lambda_i}(y_i!)^{-1})
 $$
-
 $$
-\sum_{i=1}^{N}y_{i}\text{log}(t_i \lambda) - \lambda t_i - log(y_i!)
+\sum_{i=1}^{N}\text{log}((t_i\lambda_i)^{y_{i}}) + log(e^{-t_i\lambda_i}) + log((y_i!)^{-1})
 $$
-
 $$
--\lambda \sum_{i=1}^{N}t_i + \sum_{i=1}^{N}y_{i}\text{log}(t_i \lambda) - \sum_{i=1}^{N} log(y_i!)
- \propto -\lambda \sum_{i=1}^{N}t_i + \sum_{i=1}^{N}y_{i}\text{log}(t_i \lambda)
+\sum_{i=1}^{N}y_{i}\text{log}(t_i\lambda_i) - t_i\lambda_i - log(y_i!)
+$$
+$$
+\propto \sum_{i=1}^{N}y_{i}\text{log}(t_i\lambda_i) - t_i\lambda_i
 $$
 
 ## Section C  
@@ -93,7 +93,7 @@ Write an `R` function, usable by `optim()` , implementing this variable-period P
 
 ```{R}
 evalPoisson <- function(y, t, lamb, negative=TRUE){
-    ll <- -sum(lamb*t) + sum(y * log(t * lamb))
+    ll <- sum(y * log(t * lamb) - lamb*t)
     if(negative){
         ll <- -ll
     }
@@ -137,13 +137,61 @@ simDF <- tibble(x1=runif(N), x2=runif(N)) %>%
     mutate(time=sample(1:6, N, replace=TRUE)) %>%
     mutate(y=rpois(N, time*exp(b0 + b1 * x1 + b2*x2)))
 
-summary(glm1 <- glm(
-    y ~ 1 + x1 + x2, family=poisson(), data=simDF, offset=log(simDF$time)))
-
-mean(simDF$y)
-sd(simDF$y)
+cat(paste0("Y has a mean of ", round(mean(simDF$y), 4), "\n"))
+cat(paste0("Y has a standard deviation of ", round(sd(simDF$y), 4)))
 ```
 
+## Section E  
+
+Using the artificial data you generated in part d and the `R` function for the unequal periods Poisson likelihood you wrote in part c, estimate the parameters $\beta_0$, $\beta_1$, and $\beta_2$ and report your point estimates and their standard errors. Does this exercise give you confidence that you have correctly derived and implemented the Poisson MLE for unequal periods? What could you do to increase your confidence further?
+
+When we use the `optim` function we can obtain the maximum likelihood of our parameters via an optimization algorithm of our choosing. In this case we use the `Nelder-Mead` method for finding the minimum so we need to be sure that we use the negative log likelihood rather than the log likelihood. A benefit of this approach is that we also obtain estimates of our parameter uncertainty based on the curvature of our likelihood space. The results obtained from this experiment appears to recover the true parameter values in the uncertainty band giving us evidence that we correctly derived the likelihood function. We could increase our confidence by doing this experiment many times with different parameters and making sure that we capture the true parameters in the confidence interval bands an appropriate number of times.
+
+
 ```{R}
-(runoptim1 <- optim(c(0, 0, 0), evalBetas, df=simDF))
+runoptim1 <- optim(c(0, 0, 0), evalBetas, df=simDF, hessian=TRUE)
+vcovMat <- solve(runoptim1$hessian) 
+se <- sqrt(diag(vcovMat)) 
+
+data.frame(Beta=factor(0:2), est=runoptim1$par) %>%
+    mutate(upper=est + se*1.96, lower=est - se*1.96) %>%
+    ggplot(aes(x=Beta, y=est, ymin=lower, ymax=upper, color=Beta)) +
+    geom_point() +
+    geom_errorbar(width=.3) + 
+    theme_classic() +
+    geom_hline(yintercept=c(0,1,2), linetype=3) +
+    labs(x=TeX("$\\beta$"), y="Estimate") +
+    guides(color=FALSE) +
+    ggtitle("Parameter Estimates From Derived Likelihood")
+```
+
+# Question 3
+A famous probability problem asks "What is the probability that at least two people in a classroom of n people share the same birthday?"" Write an `R` program to solve this problem using simulation. Produce as output a plot of the probabilities of at least one shared birthday for n$=\{2, \dots,50\}$.
+
+```{R birthday}
+birthdaySim <- function(n){
+    peopleInRoom <- sample.int(365, n, replace=T)
+    # Unique is slow!!!
+    length(unique(peopleInRoom)) < length(peopleInRoom)
+}
+
+people <- 2:50
+N <- 100
+M <- 1000
+
+resultMat <- sapply(1:N, function(j){
+    sapply(people, function(n){
+        sapply(1:M, function(i) birthdaySim(n))}) %>%
+        apply(2, mean)
+})
+
+tibble(`Room Size`=people, Probability=apply(resultMat, 1, mean)) %>%
+    mutate(lwr=apply(resultMat, 1, quantile, probs=.025)) %>%
+    mutate(upr=apply(resultMat, 1, quantile, probs=.975)) %>%
+    ggplot(aes(x=`Room Size`, y=Probability, ymax=upr, ymin=lwr)) +
+    geom_line() +
+    geom_ribbon(alpha=.2) +
+    theme_classic() +
+    ggtitle("Probability of Observing A Common Birthday in a Room") +
+    xlab("Number of People in Room")
 ```
