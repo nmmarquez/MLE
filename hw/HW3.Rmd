@@ -1,0 +1,32 @@
+---
+title: "Homework 3"
+author: "Neal Marquez"
+date: "October 12, 2018"
+output: pdf_document
+---
+
+```{R loads, message=F, warning=F}
+rm(list=ls())
+library(tidyverse)
+library(latex2exp)
+library(boot)
+```
+
+# Question 1
+
+```{R}
+cyDF <- read_csv("https://faculty.washington.edu/cadolph/mle/cyyoung.csv")
+
+summary(glm(cy ~ era + winpct, data=cyDF, family=binomial))
+
+evalParams <- function(params){
+    X <- cbind(rep(1, nrow(cyDF)), as.matrix(select(cyDF, era, winpct)))
+    p <- inv.logit(X %*% params)
+    y <- cyDF$cy
+    -sum(log((1-p)^(1-y) * p^y))
+}
+
+runOPT <- optim(c(0, 0, 0), evalParams, hessian=T, method="BFGS")
+runGLM <- glm(cy ~ era + winpct, data=cyDF, family=binomial)
+
+```
