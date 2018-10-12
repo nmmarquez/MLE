@@ -5,10 +5,144 @@ date: "October 11, 2018"
 output: pdf_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{R loads, message=F, warning=F}
+rm(list=ls())
+library(tidyverse)
+library(latex2exp)
 ```
 
+# Question 1
+Consider the following dataset: y = (1, 0, 0, 1, 0, 0, 0, 0), which happens to be a series of independent realizations of a Bernoulli distributed random variable. Plot the likelihood function for the Bernoulli parameter $\pi$ given y. 1 If the experiment were repeated, roughly what fraction of the observations would you expect to be successes (y = 1)? Why?
+
+```{R bernoulli}
+dbernoulli <- function(x, p){
+    (1-p)^(1-x) * p^(x)
+}
+
+y <- c(1, 0, 0, 1, 0, 0, 0, 0)
+
+data.frame(pi=seq(.01, .99, by=.01)) %>%
+    mutate(lik=sapply(pi, function(p) prod(dbernoulli(y, p)))) %>%
+    ggplot(aes(x=pi, y=lik)) +
+    geom_line() +
+    theme_classic() +
+    xlab(TeX("$\\pi$")) +
+    ylab("Likelihood")
+
+```
+
+# Question 2  
+
+## Section A  
+
+Derive the log-likelihood function corresponding to this pdf:
 $$
-\prod_{i=1}^{N}\lambda^{y_{i}} e^{-\lambda}(y_i!)^{-1}
+f_{\text{Poisson}}(\lambda) = \lambda^{y} e^{-\lambda}(y!)^{-1}
 $$
+
+### Derivation  
+
+$$
+\text{log} \Big( \prod_{i=1}^{N}\lambda^{y_{i}} e^{-\lambda}(y_i!)^{-1} \Big)
+$$
+$$
+\sum_{i=1}^{N}\text{log}(\lambda^{y_{i}} e^{-\lambda}(y_i!)^{-1})
+$$
+
+$$
+\sum_{i=1}^{N}\text{log}(\lambda^{y_{i}}) + log(e^{-\lambda}) + log((y_i!)^{-1})
+$$
+
+$$
+\sum_{i=1}^{N}y_{i}\text{log}(\lambda) - \lambda - log(y_i!)
+$$
+
+$$
+-N \lambda + \text{log}(\lambda)\sum_{i=1}^{N}y_{i} - \sum_{i=1}^{N} log(y_i!)
+ \propto -N \lambda + \text{log}(\lambda)\sum_{i=1}^{N}y_{i}
+$$
+
+## Section B  
+Suppose that for periods $i \in \{1, . . . , i, . . . , n\}$,each of (potentially varying) length $t_i$ , we observe counts $y_i$. We would like to use the Poissondistribution to model these data, but an assumption of the Poisson distribution(and hence the Poisson regression model) is that the periods observed are of equal length. Relax this assumption, and revise your derivation in part a accordingly.
+
+### Derivation Revised
+
+$$
+\text{log} \Big( \prod_{i=1}^{N}(t_{i}\lambda)^{y_{i}} e^{-\lambda t_{i}}(y_i!)^{-1} \Big)
+$$
+$$
+\sum_{i=1}^{N}\text{log}((t_{i}\lambda)^{y_{i}} e^{-\lambda t_{i}}(y_i!)^{-1})
+$$
+
+$$
+\sum_{i=1}^{N}\text{log}((t_{i}\lambda)^{y_{i}}) + log(e^{-\lambda t_i}) + log((y_i!)^{-1})
+$$
+
+$$
+\sum_{i=1}^{N}y_{i}\text{log}(t_i \lambda) - \lambda t_i - log(y_i!)
+$$
+
+$$
+-\lambda \sum_{i=1}^{N}t_i + \sum_{i=1}^{N}y_{i}\text{log}(t_i \lambda) - \sum_{i=1}^{N} log(y_i!)
+ \propto -\lambda \sum_{i=1}^{N}t_i + \sum_{i=1}^{N}y_{i}\text{log}(t_i \lambda)
+$$
+
+## Section C  
+
+Write an `R` function, usable by `optim()` , implementing this variable-period Poisson estimator.
+
+```{R}
+evalPoisson <- function(y, t, lamb, negative=TRUE){
+    ll <- -lamb * sum(t) + sum(y * log(t * lamb))
+    if(negative){
+        ll <- -ll
+    }
+    ll
+}
+
+evalBetas <- function(betas, df=DF){
+    lambs <- exp(c(as.matrix(cbind(rep(1, N), select(df, x1, x2))) %*% betas))
+    #evalPoisson(df$y, df$time, lambs)
+    sum(dpois(df$y, df$time * lambs, log = TRUE)) * -1
+}
+```
+
+## Section D  
+
+Generate an artifical dataset with 1000 observations consisting of three variables:
+
+$$
+x_{1i} \sim \text{Uniform}(0,1)
+$$
+$$
+x_{2i} \sim \text{Uniform}(0,1)
+$$
+$$
+y_i \sim \text{Poisson}(t_i \lambda_i)
+$$
+where  
+$$
+\lambda_i = \text{exp}(\beta_0 + \beta_1 x_{1i} + \beta_2 x_{2i})
+$$
+
+and $t_i$ is a random draw from the integers $\{1,2,3,4,5\}$; this is the length of the period. Assume that the true values of the model parameters are $\beta_0 = 0$, $\beta_1 = 1$, and $\beta_2 = 2$. Confirm that the mean of $y_i$ is approximately 16.5, and the standard deviation of y i is approximately 14.7 (your results may differ by as much as one unit in each case due to Monte Carlo error).
+
+```{R}
+set.seed(12345)
+N <- 10000
+b0 <- 0
+b1 <- 1
+b2 <- 2
+
+DF <- tibble(x1=runif(N), x2=runif(N)) %>%
+    mutate(time=sample(1:6, N, replace=T)) %>%
+    mutate(y=as.numeric(rpois(N, exp(b1))))
+
+mean(DF$y)
+sd(DF$y)
+```
+
+```{R}
+run1 <- nlminb(c(0, 0, 0), evalBetas)
+run2 <- glm(y ~ 1, data=DF, family=poisson)
+```
