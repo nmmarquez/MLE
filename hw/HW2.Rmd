@@ -93,17 +93,17 @@ Write an `R` function, usable by `optim()` , implementing this variable-period P
 
 ```{R}
 evalPoisson <- function(y, t, lamb, negative=TRUE){
-    ll <- -lamb * sum(t) + sum(y * log(t * lamb))
+    ll <- -sum(lamb*t) + sum(y * log(t * lamb))
     if(negative){
         ll <- -ll
     }
     ll
 }
 
-evalBetas <- function(betas, df=DF){
+evalBetas <- function(betas, df){
     lambs <- exp(c(as.matrix(cbind(rep(1, N), select(df, x1, x2))) %*% betas))
-    #evalPoisson(df$y, df$time, lambs)
-    sum(dpois(df$y, df$time * lambs, log = TRUE)) * -1
+    evalPoisson(df$y, df$time, lambs)
+    
 }
 ```
 
@@ -129,20 +129,21 @@ and $t_i$ is a random draw from the integers $\{1,2,3,4,5\}$; this is the length
 
 ```{R}
 set.seed(12345)
-N <- 10000
+N <- 1000
 b0 <- 0
 b1 <- 1
 b2 <- 2
+simDF <- tibble(x1=runif(N), x2=runif(N)) %>% 
+    mutate(time=sample(1:6, N, replace=TRUE)) %>%
+    mutate(y=rpois(N, time*exp(b0 + b1 * x1 + b2*x2)))
 
-DF <- tibble(x1=runif(N), x2=runif(N)) %>%
-    mutate(time=sample(1:6, N, replace=T)) %>%
-    mutate(y=as.numeric(rpois(N, exp(b1))))
+summary(glm1 <- glm(
+    y ~ 1 + x1 + x2, family=poisson(), data=simDF, offset=log(simDF$time)))
 
-mean(DF$y)
-sd(DF$y)
+mean(simDF$y)
+sd(simDF$y)
 ```
 
 ```{R}
-run1 <- nlminb(c(0, 0, 0), evalBetas)
-run2 <- glm(y ~ 1, data=DF, family=poisson)
+(runoptim1 <- optim(c(0, 0, 0), evalBetas, df=simDF))
 ```
