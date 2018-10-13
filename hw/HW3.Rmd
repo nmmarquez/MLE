@@ -10,15 +10,15 @@ rm(list=ls())
 library(tidyverse)
 library(latex2exp)
 library(boot)
+
+cyDF <- read_csv("https://faculty.washington.edu/cadolph/mle/cyyoung.csv")
 ```
 
 # Question 1
 
-```{R}
-cyDF <- read_csv("https://faculty.washington.edu/cadolph/mle/cyyoung.csv")
+## Section A
 
-summary(glm(cy ~ era + winpct, data=cyDF, family=binomial))
-
+```{R, message=F, warning=F}
 evalParams <- function(params){
     X <- cbind(rep(1, nrow(cyDF)), as.matrix(select(cyDF, era, winpct)))
     p <- inv.logit(X %*% params)
@@ -26,7 +26,61 @@ evalParams <- function(params){
     -sum(log((1-p)^(1-y) * p^y))
 }
 
-runOPT <- optim(c(0, 0, 0), evalParams, hessian=T, method="BFGS")
+runOPT <- optim(c(0, 0, 0), evalParams, hessian=T)#, method="BFGS")
 runGLM <- glm(cy ~ era + winpct, data=cyDF, family=binomial)
 
+vcovMat <- solve(runOPT$hessian) 
+se <- sqrt(diag(vcovMat)) 
+
+bind_rows(
+    tibble(coeff=names(runGLM$coefficients), est=runOPT$par) %>%
+        mutate(`97.5 %`=est + se*1.96, `2.5 %`=est - se*1.96) %>%
+        mutate(Approach="Optim"),
+    as_tibble(confint(runGLM)) %>%
+        mutate(est=runGLM$coefficients, coeff=names(runGLM$coefficients)) %>%
+        mutate(Approach="GLM")) %>%
+    filter(coeff!="(Intercept)") %>%
+    ggplot(aes(x=coeff, y=est, ymin=`2.5 %`, ymax=`97.5 %`, color=coeff)) +
+    geom_point() +
+    geom_errorbar(width=.3) +
+    facet_wrap(~Approach, nrow=2) +
+    theme_classic() +
+    guides(color=FALSE) +
+    coord_flip() +
+    labs(x="Coefficient", y="Estimate")
+
+```
+
+## Section B
+```{R}
+expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
+    mutate(prob=inv.logit(predict(runGLM, newdata=.))) %>%
+    mutate(winpct=as.factor(round(winpct, 2))) %>%
+    ggplot(aes(x=era, y=prob, group=winpct, color=winpct)) +
+    geom_line() +
+    theme_classic() +
+    labs(x="ERA", y="Probability", color="Win %")
+```
+
+## Section C
+```{R}
+expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
+    cbind(as.data.frame(predict(runGLM, newdata=., se.fit=T)[1:2])) %>%
+    mutate(lwr=fit-1.96*se.fit, upr=fit+1.96*se.fit) %>%
+    mutate_at(c("fit", "lwr", "upr"), inv.logit) %>%
+    mutate(winpct=as.factor(round(winpct, 2))) %>%
+    ggplot(
+        aes(x=era, y=fit, group=winpct, fill=winpct,
+            color=winpct, ymin=lwr, ymax=upr)) +
+    geom_line() +
+    geom_ribbon(alpha=.3) +
+    theme_classic() +
+    labs(x="ERA", y="Probability", color="Win %") +
+    guides(color=FALSE)
+```
+
+## Section D
+```{R}
+fupdate <- cy ~ era * winpct 
+summary(updateGLM <- glm(fupdate, data=cyDF, family=binomial))
 ```
