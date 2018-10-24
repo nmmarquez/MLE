@@ -21,7 +21,11 @@ cyDF <- read_csv("https://faculty.washington.edu/cadolph/mle/cyyoung.csv") %>%
 
 # Question 1
 
+The dataset `cyyoung.csv` contains information on selected North American baseball pitchers from 1980 to 2002. Pitchers’ performance can be measured in several ways: their record of games won or lost, the number of runs (points) they allowed the other team to score per game, the number of players they "struck out," the number of players they "walked," and the number of innings they pitched. At the end of the season, two pitchers (one from the American League, and one from the National League) are voted the best pitchers of the year.
+
 ## Section A
+
+Fit a logistic regression to the variable `cy` with `era` and `winpct` as the only covariates. Report the estimated parameters, their standard errors, and the log likelihood at its maximum. Perform this fit using `optim()`, then replicate thefit using `glm()`.
 
 ```{R, message=F, warning=F}
 evalParams <- function(params){
@@ -35,8 +39,8 @@ fog <- cy ~ era + winpct
 runOPT <- optim(c(0, 0, 0), evalParams, hessian=T)
 runGLM <- glm(fog, data=cyDF, family=binomial)
 
-vcovMat <- solve(runOPT$hessian) 
-se <- sqrt(diag(vcovMat)) 
+vcovMat <- solve(runOPT$hessian)
+se <- sqrt(diag(vcovMat))
 
 bind_rows(
     tibble(coeff=names(runGLM$coefficients), est=runOPT$par) %>%
@@ -58,17 +62,23 @@ bind_rows(
 ```
 
 ## Section B
+
+Without using a special package like `simcf`, calculate the probability a pitcher receives the Cy Young award given `era`$=\{1.50, 1.75, 2.00, \dots,4.75,5.00 \}$ with `winpct` held at its mean value. Now, calculate the probability again, for the same range of `era`’s, given either `winpct`= 0.5 or `winpct`= 0.9. You should end up with $3\times15=45$ probabilities. Plot these estimated probabilities nicely (the tile package works well for this graphic and the next problem, but for this part, even a matrix works well).
+
 ```{R}
 expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
     mutate(prob=inv.logit(predict(runGLM, newdata=.))) %>%
     mutate(winpct=as.factor(round(winpct, 2))) %>%
     ggplot(aes(x=era, y=prob, group=winpct, color=winpct)) +
-    geom_line() +
+    geom_point() +
     theme_classic() +
     labs(x="ERA", y="Probability", color="Win %")
 ```
 
 ## Section C
+
+Calculate or simulate 95 percent confidence intervals for each of the probabilities plotted in b. (You may now use any package you wish.) Design a graphic (not a table) to incorporate these confidence intervals. Interpret your findings.
+
 ```{R}
 expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
     cbind(as.data.frame(predict(runGLM, newdata=., se.fit=T)[1:2])) %>%
@@ -76,16 +86,19 @@ expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
     mutate_at(c("fit", "lwr", "upr"), inv.logit) %>%
     mutate(winpct=as.factor(round(winpct, 2))) %>%
     ggplot(
-        aes(x=era, y=fit, group=winpct, fill=winpct,
-            color=winpct, ymin=lwr, ymax=upr)) +
+        aes(x=era, y=fit, group=winpct, color=winpct, ymin=lwr, ymax=upr,
+            fill=winpct)) +
     geom_line() +
     geom_ribbon(alpha=.3) +
     theme_classic() +
     labs(x="ERA", y="Probability", color="Win %") +
-    guides(color=FALSE)
+    guides(fill=FALSE)
 ```
 
 ## Section D
+
+Find a "better model" of `cy`. You may add other variables from the dataset, remove variables already in the model, and/or transform or any variables you wish, except `cy`. Whatever choice you make you should justify in some fashion. Fit your new model, and show whether your fit has improved using __(i)__ a likelihood ratio test, __(ii)__ AIC and/or BIC, __(iii)__ in-sample ROC curves, __(iv)__ in-sample Actual versus Predicted plots, and __(v)__ cross-validation using the metric(s) of your choice.
+
 ```{R}
 fupdate <- cy ~ era * year + winpct
 updateGLM <- glm(fupdate, data=cyDF, family=binomial)
@@ -147,6 +160,15 @@ sapply(1:M, function(x){
 
 ## Section E
 
+Suppose your model from d. has the following form:  
+$$
+\text{cy}_i \sim \text{Bernoulli}(\pi) 
+$$
+$$
+\pi_i = \text{logit}^{-1}(\alpha + z_i \gamma + \boldsymbol{x}_i \boldsymbol{\beta})
+$$
+where $z_i$ is a covariate of particular interest and $x_i$ is a vector of additional covariates. We are interested in understanding how the conditional expectation of `cy` changes as $z$such that $z$ chnages from $z_{pre}$ to $z_{post}$. Then simulate the first difference in the probability (or, if you prefer, the relative risk) of receiving a Cy Young given the change in $z$, holding other covariates $\boldsymbol{x}$ constant (that is, make sure $\boldsymbol{x}_\text{pre} =\boldsymbol{x}\text{post}$). Display your results neatly in a plot or table, and be sure to show the uncertainty in these estimates.
+
 ```{R}
 M <- 1000
 betaDraws <- t(rmvnorm(M, updateGLM$coefficients, vcov(updateGLM)))
@@ -171,3 +193,9 @@ expand.grid(era=c(2, 3), year=1980:2002, winpct=mean(cyDF$winpct)) %>%
     labs(y=TeX("$\\Delta$ Probability"), x="Year") +
     ggtitle("Change in Probability from Decreasing ERA from 3 to 2.")
 ```
+
+## Section F  
+Does logistic regression offer a defensible probability model here? What assumptions of this model might be violated by the variable `cy`?
+
+## Section G  
+Suppose the pitchers selected for inclusion in the dataset were all considered "contenders" for the Cy Young award by knowledgable experts. Pitchers whom the experts considered unlikely to win the award were excluded. How might this fact affect your findings?
