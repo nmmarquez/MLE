@@ -19,22 +19,35 @@ We can calculate the likelihood function by using the probability mass function 
 $$
 (1-\pi)^{1-x}\pi^x
 $$
+
+or the more convienient log likelihood.
+
+$$
+(1-x)\text{log}(1-\pi) + x \text{log}(\pi)
+$$
+
 The probability mass function can then be calculated for each observation for a specified value of $\pi$ and multiplied together in order to get a likelihood for $\pi$. The plot below shows the process of calculating the likelihood for nearly 1000 values evenly spaced between 0 and 1. We see that the peak of the profile likelihood is at .25 which is not only the mean of our data but also the MLE for the parameter. This would mean that we would expect $\frac{1}{4}$ of future observations to be 1.
 
 ```{R bernoulli}
-dbernoulli <- function(x, p){
-    (1-p)^(1-x) * p^(x)
+dbernoulli <- function(x, p, log=TRUE){
+    if(!log){
+        lik <- (1-p)^(1-x) * p^(x)
+    }
+    else{
+        lik <- (1-x) * log(1-p) + x * log(p)
+    }
+    lik
 }
 
 y <- c(1, 0, 0, 1, 0, 0, 0, 0)
 
 data.frame(pi=seq(.001, .999, by=.001)) %>%
-    mutate(lik=sapply(pi, function(p) prod(dbernoulli(y, p)))) %>%
+    mutate(lik=sapply(pi, function(p) sum(dbernoulli(y, p)))) %>%
     ggplot(aes(x=pi, y=lik)) +
-    geom_line() +
+    geom_point() +
     theme_classic() +
     xlab(TeX("$\\pi$")) +
-    ylab("Likelihood")
+    ylab("Log Likelihood")
 
 ```
 
@@ -103,7 +116,6 @@ evalPoisson <- function(y, t, lamb, negative=TRUE){
 evalBetas <- function(betas, df){
     lambs <- exp(c(as.matrix(cbind(rep(1, N), select(df, x1, x2))) %*% betas))
     evalPoisson(df$y, df$time, lambs)
-    
 }
 ```
 
@@ -145,7 +157,7 @@ cat(paste0("Y has a standard deviation of ", round(sd(simDF$y), 4)))
 
 Using the artificial data you generated in part d and the `R` function for the unequal periods Poisson likelihood you wrote in part c, estimate the parameters $\beta_0$, $\beta_1$, and $\beta_2$ and report your point estimates and their standard errors. Does this exercise give you confidence that you have correctly derived and implemented the Poisson MLE for unequal periods? What could you do to increase your confidence further?
 
-When we use the `optim` function we can obtain the maximum likelihood of our parameters via an optimization algorithm of our choosing. In this case we use the `Nelder-Mead` method for finding the minimum so we need to be sure that we use the negative log likelihood rather than the log likelihood. A benefit of this approach is that we also obtain estimates of our parameter uncertainty based on the curvature of our likelihood space. The results obtained from this experiment appears to recover the true parameter values in the uncertainty band giving us evidence that we correctly derived the likelihood function. We could increase our confidence by doing this experiment many times with different parameters and making sure that we capture the true parameters in the confidence interval bands an appropriate number of times.
+When we use the `optim` function we can obtain the maximum likelihood of our parameters via an optimization algorithm of our choosing. In this case we use the `Nelder-Mead` method for finding the minimum so we need to be sure that we use the negative log likelihood rather than the log likelihood. A benefit of this approach is that we also obtain estimates of our parameter uncertainty based on the curvature of our likelihood space. The results obtained from this experiment appears to recover the true parameter values in the uncertainty band giving us evidence that we correctly derived the likelihood function(see plot below). In practice the confidence intervals should overlap the true value for 95% of the simulations that we run(given 95% confidence intervals). We could increase our confidence by doing this experiment many times with different parameters and making sure that we capture the true parameters in the confidence interval bands an appropriate number of times.
 
 
 ```{R}
