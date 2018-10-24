@@ -17,6 +17,22 @@ library(mvtnorm)
 
 cyDF <- read_csv("https://faculty.washington.edu/cadolph/mle/cyyoung.csv") %>%
     mutate(id=1:n())
+
+
+predict.opt <- function(model, newdata, formula, sefit=NULL){
+    X <- model.matrix(formula[-2], newdata)
+    rez <- c(X %*% model$par)
+    if(is.null(sefit)){
+        return(rez)
+    }
+    betas <- rmvnorm(sefit, model$par, solve(model$hessian))
+    preds <- X %*% t(betas)
+    tibble(
+        fit = rez,
+        lwr = apply(preds, 1, quantile, probs=.025),
+        upr = apply(preds, 1, quantile, probs=.975)
+    )
+}
 ```
 
 # Question 1
@@ -28,15 +44,15 @@ The dataset `cyyoung.csv` contains information on selected North American baseba
 Fit a logistic regression to the variable `cy` with `era` and `winpct` as the only covariates. Report the estimated parameters, their standard errors, and the log likelihood at its maximum. Perform this fit using `optim()`, then replicate thefit using `glm()`.
 
 ```{R, message=F, warning=F}
-evalParams <- function(params){
-    X <- cbind(rep(1, nrow(cyDF)), as.matrix(select(cyDF, era, winpct)))
+evalParams <- function(params, formula, data=cyDF){
+    X <- model.matrix(formula[-2], data)
     p <- inv.logit(X %*% params)
-    y <- cyDF$cy
+    y <- data$cy
     -sum(log((1-p)^(1-y) * p^y))
 }
 
 fog <- cy ~ era + winpct
-runOPT <- optim(c(0, 0, 0), evalParams, hessian=T)
+runOPT <- optim(c(0, 0, 0), evalParams, formula=fog, hessian=T)
 runGLM <- glm(fog, data=cyDF, family=binomial)
 
 vcovMat <- solve(runOPT$hessian)
@@ -49,7 +65,6 @@ bind_rows(
     as_tibble(confint(runGLM)) %>%
         mutate(est=runGLM$coefficients, coeff=names(runGLM$coefficients)) %>%
         mutate(Approach="GLM")) %>%
-    filter(coeff!="(Intercept)") %>%
     ggplot(aes(x=coeff, y=est, ymin=`2.5 %`, ymax=`97.5 %`, color=coeff)) +
     geom_point() +
     geom_errorbar(width=.3) +
@@ -67,7 +82,7 @@ Without using a special package like `simcf`, calculate the probability a pitche
 
 ```{R}
 expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
-    mutate(prob=inv.logit(predict(runGLM, newdata=.))) %>%
+    mutate(prob=inv.logit(predict.opt(runOPT, newdata=., fog))) %>%
     mutate(winpct=as.factor(round(winpct, 2))) %>%
     ggplot(aes(x=era, y=prob, group=winpct, color=winpct)) +
     geom_point() +
@@ -81,8 +96,7 @@ Calculate or simulate 95 percent confidence intervals for each of the probabilit
 
 ```{R}
 expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
-    cbind(as.data.frame(predict(runGLM, newdata=., se.fit=T)[1:2])) %>%
-    mutate(lwr=fit-1.96*se.fit, upr=fit+1.96*se.fit) %>%
+    cbind(predict.opt(runOPT, newdata=., fog, sefit = 10000)) %>%
     mutate_at(c("fit", "lwr", "upr"), inv.logit) %>%
     mutate(winpct=as.factor(round(winpct, 2))) %>%
     ggplot(
@@ -101,18 +115,27 @@ Find a "better model" of `cy`. You may add other variables from the dataset, rem
 
 ```{R}
 fupdate <- cy ~ era * year + winpct
+parLength <- length(labels(terms(fupdate[-2]))) + 1
 updateGLM <- glm(fupdate, data=cyDF, family=binomial)
+# we set the baseline parameters to the fitted GLM data but we could get
+# the same result by scling the coefficients
+updateOPT <- optim(coef(updateGLM), evalParams, formula=fupdate, hessian=T)
 
-lrtest(runGLM, updateGLM) %>% 
-    mutate(AIC=sapply(list(runGLM, updateGLM), AIC))
+cat("Likelihood Ratio Test For Additional Parameters\n")
+cat(round(pchisq(-2 * (-runOPT$value + updateOPT$value), 2, lower.tail=F), 4))
+
+cat("\nAIC Calculations for models\n")
+print(c(
+    Baseline = round(2*(length(runOPT$par)) + 2 * runOPT$value, 4), 
+    Updated = round(2*(length(updateOPT$par)) + 2 * updateOPT$value, 4)))
 
 predDF <- rbind(
     data.frame(
-        predictor = runGLM$fitted.values,
+        predictor = inv.logit(predict.opt(runOPT, cyDF, fog)),
         known.truth = cyDF$cy,
         Model = "Original"),
     data.frame(
-        predictor = updateGLM$fitted.values,
+        predictor = inv.logit(predict.opt(updateOPT, cyDF, fupdate)),
         known.truth = cyDF$cy,
         Model = "Updated"))
 
@@ -127,7 +150,8 @@ predDF %>%
     geom_histogram(alpha=.3, position="identity", bins=30) +
     theme_classic() +
     facet_wrap(~Model) +
-    geom_vline(xintercept=.5, linetype=3)
+    geom_vline(xintercept=.5, linetype=3) +
+    xlab("Predicted")
 ```
 
 ```{R cv}
@@ -142,12 +166,15 @@ sapply(1:M, function(x){
     testDF <- select(trainDF, id, trainID) %>%
         right_join(cyDF, by="id") %>%
         filter(is.na(trainID))
-
-    trainOGGLM <- glm(fog, data=trainDF, family=binomial)
-    trainUPGLM <- glm(fupdate, data=trainDF, family=binomial)
     
-    predOG <- predict(trainOGGLM, newdata=testDF, type="response")
-    predUP <- predict(trainUPGLM, newdata=testDF, type="response")
+    trainOGGLM <- optim(
+        c(0, 0, 0), evalParams, formula=fog, data=trainDF, hessian=T)
+    trainUPGLM <- optim(
+        coef(updateGLM), evalParams, formula=fupdate, data=trainDF, hessian=T)
+    
+    predOG <- inv.logit(predict.opt(trainOGGLM, newdata=testDF, fog))
+    predUP <- inv.logit(predict.opt(trainUPGLM, newdata=testDF, fupdate))
+    
     res <- c(
         sqrt(sum((testDF$cy - predOG)^2)), 
         sqrt(sum((testDF$cy - predUP)^2)))
@@ -170,8 +197,8 @@ $$
 where $z_i$ is a covariate of particular interest and $x_i$ is a vector of additional covariates. We are interested in understanding how the conditional expectation of `cy` changes as $z$such that $z$ chnages from $z_{pre}$ to $z_{post}$. Then simulate the first difference in the probability (or, if you prefer, the relative risk) of receiving a Cy Young given the change in $z$, holding other covariates $\boldsymbol{x}$ constant (that is, make sure $\boldsymbol{x}_\text{pre} =\boldsymbol{x}\text{post}$). Display your results neatly in a plot or table, and be sure to show the uncertainty in these estimates.
 
 ```{R}
-M <- 1000
-betaDraws <- t(rmvnorm(M, updateGLM$coefficients, vcov(updateGLM)))
+M <- 10000
+betaDraws <- t(rmvnorm(M, updateOPT$par, solve(updateOPT$hessian)))
 
 expand.grid(era=c(2, 3), year=1980:2002, winpct=mean(cyDF$winpct)) %>%
     mutate(`(Intercept)`=1, `era:year`=era*year) %>%
@@ -191,7 +218,9 @@ expand.grid(era=c(2, 3), year=1980:2002, winpct=mean(cyDF$winpct)) %>%
     geom_ribbon(alpha=.3) +
     theme_classic() +
     labs(y=TeX("$\\Delta$ Probability"), x="Year") +
-    ggtitle("Change in Probability from Decreasing ERA from 3 to 2.")
+    ggtitle(paste(
+        "Change in Probability from Decreasing ERA from 3 to 2.",
+        "Confidince Intervals Created Via Simulation", sep="\n"))
 ```
 
 ## Section F  
