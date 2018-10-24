@@ -43,6 +43,8 @@ The dataset `cyyoung.csv` contains information on selected North American baseba
 
 Fit a logistic regression to the variable `cy` with `era` and `winpct` as the only covariates. Report the estimated parameters, their standard errors, and the log likelihood at its maximum. Perform this fit using `optim()`, then replicate the fit using `glm()`.
 
+Fitting our model using either the canned `glm` function in `R` vis writing our own likelihood in optim provided similar results as seen in the plot below. The likelihoods for both models, the coefficients, and the standard errors each provided similar results. From this point forward I will use `optim` for all analysis.
+
 ```{R, message=F, warning=F}
 evalParams <- function(params, formula, data=cyDF){
     X <- model.matrix(formula[-2], data)
@@ -91,7 +93,8 @@ expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
     ggplot(aes(x=era, y=prob, group=winpct, color=winpct)) +
     geom_point() +
     theme_classic() +
-    labs(x="ERA", y="Probability", color="Win %")
+    labs(x="ERA", y="Probability", color="Win %") +
+    ggtitle("Probability of Award Varyig ERA and Win %")
 ```
 
 ## Section C
@@ -110,12 +113,15 @@ expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
     geom_ribbon(alpha=.3) +
     theme_classic() +
     labs(x="ERA", y="Probability", color="Win %") +
-    guides(fill=FALSE)
+    guides(fill=FALSE) +
+    ggtitle("Probability of Award Varyig ERA and Win %")
 ```
 
 ## Section D
 
 Find a "better model" of `cy`. You may add other variables from the dataset, remove variables already in the model, and/or transform or any variables you wish, except `cy`. Whatever choice you make you should justify in some fashion. Fit your new model, and show whether your fit has improved using __(i)__ a likelihood ratio test, __(ii)__ AIC and/or BIC, __(iii)__ in-sample ROC curves, __(iv)__ in-sample Actual versus Predicted plots, and __(v)__ cross-validation using the metric(s) of your choice.
+
+I added in a new term for year and multiplied it alongside ERA as ERAs have improved over time and we might expect that lower eras would be more important in more recent years. The addition of two new terms was tested using the metrics above and for each test the inclusion of the new parameters was justified.
 
 ```{R}
 fupdate <- cy ~ era * year + winpct
@@ -124,14 +130,18 @@ updateGLM <- glm(fupdate, data=cyDF, family=binomial)
 # we set the baseline parameters to the fitted GLM data but we could get
 # the same result by scling the coefficients
 updateOPT <- optim(coef(updateGLM), evalParams, formula=fupdate, hessian=T)
+lrtest1 <- round(
+    pchisq(-2 * (-runOPT$value + updateOPT$value), 2, lower.tail=F), 4)
 
-cat("Likelihood Ratio Test For Additional Parameters\n")
-cat(round(pchisq(-2 * (-runOPT$value + updateOPT$value), 2, lower.tail=F), 4))
+cat(paste(
+    "Likelihood Ratio Test For Additional Parameters (p-value)",
+    lrtest1, sep="\n"))
 
-cat("\nAIC Calculations for models\n")
-print(c(
+AICs <- c(
     Original = round(2*(length(runOPT$par)) + 2 * runOPT$value, 4), 
-    Updated = round(2*(length(updateOPT$par)) + 2 * updateOPT$value, 4)))
+    Updated = round(2*(length(updateOPT$par)) + 2 * updateOPT$value, 4))
+
+cat(paste0("AIC Calculations for model ", names(AICs), ": ", AICs, "\n"))
 
 predDF <- rbind(
     data.frame(
@@ -146,7 +156,9 @@ predDF <- rbind(
 predDF %>%
     ggplot(aes(d = known.truth, m = predictor, color = Model)) + 
     geom_roc(n.cuts = 0) +
-    theme_classic()
+    theme_classic() +
+    labs(x="False Positive", y="True Positive") +
+    ggtitle("AUC For Original & Updated Models")
 
 predDF %>%
     mutate(CY=known.truth == 1) %>%
@@ -155,7 +167,8 @@ predDF %>%
     theme_classic() +
     facet_wrap(~Model) +
     geom_vline(xintercept=.5, linetype=3) +
-    xlab("Predicted")
+    xlab("Predicted") +
+    ggtitle("Predicted Histogram By Observed Outcome")
 ```
 
 ```{R cv}
@@ -193,7 +206,7 @@ resultsDF %>%
     geom_boxplot(notch=TRUE) +
     theme_classic() +
     scale_fill_brewer(palette="Blues") +
-    ggtitle("Out of Sample RMSE")
+    ggtitle("Out of Sample RMSE For 100 Train-Test Splits")
 ```
 
 ## Section E
@@ -237,5 +250,9 @@ expand.grid(era=c(2, 3), year=1980:2002, winpct=mean(cyDF$winpct)) %>%
 ## Section F  
 Does logistic regression offer a defensible probability model here? What assumptions of this model might be violated by the variable `cy`?
 
+The logistic model is not an appropriate probability model as it assumes that each players chance of winning is independent when we know that only one person can win in each division every year. A more appropriate model would select one winner from a pool of applicants within a division no matter the size of the pool. We know that there can only be one winner every year and our probability model should reflect that.
+
 ## Section G  
-Suppose the pitchers selected for inclusion in the dataset were all considered "contenders" for the Cy Young award by knowledgable experts. Pitchers whom the experts considered unlikely to win the award were excluded. How might this fact affect your findings?
+Suppose the pitchers selected for inclusion in the dataset were all considered "contenders" for the Cy Young award by knowledgeable experts. Pitchers whom the experts considered unlikely to win the award were excluded. How might this fact affect your findings?
+
+If this dataset only included contenders selected by a panel of knowledgeable experts then future observations would need to take that into consideration as well. That is future observations that were not selected by a panel would need to be evaluated differently. Furthermore, we can see that within our dataset that even though two individuals should be selected every year, this is always the case. If these players were indeed selected by knowledgeable experts it appears that they are not the only players who win the award every year.
