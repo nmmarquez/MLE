@@ -10,8 +10,13 @@ rm(list=ls())
 library(tidyverse)
 library(latex2exp)
 library(boot)
+library(glmnet)
+library(plotROC)
+library(lmtest)
+library(mvtnorm)
 
-cyDF <- read_csv("https://faculty.washington.edu/cadolph/mle/cyyoung.csv")
+cyDF <- read_csv("https://faculty.washington.edu/cadolph/mle/cyyoung.csv") %>%
+    mutate(id=1:n())
 ```
 
 # Question 1
@@ -26,8 +31,9 @@ evalParams <- function(params){
     -sum(log((1-p)^(1-y) * p^y))
 }
 
-runOPT <- optim(c(0, 0, 0), evalParams, hessian=T)#, method="BFGS")
-runGLM <- glm(cy ~ era + winpct, data=cyDF, family=binomial)
+fog <- cy ~ era + winpct
+runOPT <- optim(c(0, 0, 0), evalParams, hessian=T)
+runGLM <- glm(fog, data=cyDF, family=binomial)
 
 vcovMat <- solve(runOPT$hessian) 
 se <- sqrt(diag(vcovMat)) 
@@ -81,6 +87,87 @@ expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
 
 ## Section D
 ```{R}
-fupdate <- cy ~ era * winpct 
-summary(updateGLM <- glm(fupdate, data=cyDF, family=binomial))
+fupdate <- cy ~ era * year + winpct
+updateGLM <- glm(fupdate, data=cyDF, family=binomial)
+
+lrtest(runGLM, updateGLM) %>% 
+    mutate(AIC=sapply(list(runGLM, updateGLM), AIC))
+
+predDF <- rbind(
+    data.frame(
+        predictor = runGLM$fitted.values,
+        known.truth = cyDF$cy,
+        Model = "Original"),
+    data.frame(
+        predictor = updateGLM$fitted.values,
+        known.truth = cyDF$cy,
+        Model = "Updated"))
+
+predDF %>%
+    ggplot(aes(d = known.truth, m = predictor, color = Model)) + 
+    geom_roc(n.cuts = 0) +
+    theme_classic()
+
+predDF %>%
+    mutate(CY=known.truth == 1) %>%
+    ggplot(aes(x=predictor, group=CY, fill=CY)) +
+    geom_histogram(alpha=.3, position="identity", bins=30) +
+    theme_classic() +
+    facet_wrap(~Model) +
+    geom_vline(xintercept=.5, linetype=3)
+```
+
+```{R cv}
+
+set.seed(12345)
+M <- 100
+trainSize <- .7
+
+sapply(1:M, function(x){
+    trainDF <- sample_frac(cyDF, size=trainSize) %>%
+        mutate(trainID=1:n())
+    testDF <- select(trainDF, id, trainID) %>%
+        right_join(cyDF, by="id") %>%
+        filter(is.na(trainID))
+
+    trainOGGLM <- glm(fog, data=trainDF, family=binomial)
+    trainUPGLM <- glm(fupdate, data=trainDF, family=binomial)
+    
+    predOG <- predict(trainOGGLM, newdata=testDF, type="response")
+    predUP <- predict(trainUPGLM, newdata=testDF, type="response")
+    res <- c(
+        sqrt(sum((testDF$cy - predOG)^2)), 
+        sqrt(sum((testDF$cy - predUP)^2)))
+    res}) %>%
+    t %>%
+    as.data.frame %>%
+    rename(Original=V1, Updated=V2) %>%
+    summary
+```
+
+## Section E
+
+```{R}
+M <- 1000
+betaDraws <- t(rmvnorm(M, updateGLM$coefficients, vcov(updateGLM)))
+
+expand.grid(era=c(2, 3), year=1980:2002, winpct=mean(cyDF$winpct)) %>%
+    mutate(`(Intercept)`=1, `era:year`=era*year) %>%
+    select(`(Intercept)`, era, year, winpct, `era:year`) %>%
+    cbind(as.matrix(.) %*% betaDraws) %>%
+    gather(key="simulation", value="value", `1`:`100`) %>%
+    mutate(simulation=as.numeric(simulation), value=inv.logit(value)) %>%
+    arrange(simulation, year, era) %>%
+    group_by(year, simulation) %>%
+    summarize(diff=nth(value, 1) - nth(value, 2)) %>%
+    summarize(
+        mu=mean(diff), 
+        lwr=quantile(diff, probs=.025),
+        upr=quantile(diff, probs=.975)) %>%
+    ggplot(aes(x=year, y=mu, ymin=lwr, ymax=upr)) +
+    geom_line(linetype=2) +
+    geom_ribbon(alpha=.3) +
+    theme_classic() +
+    labs(y=TeX("$\\Delta$ Probability"), x="Year") +
+    ggtitle("Change in Probability from Decreasing ERA from 3 to 2.")
 ```

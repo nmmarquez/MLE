@@ -140,13 +140,13 @@ $$
 and $t_i$ is a random draw from the integers $\{1,2,3,4,5\}$; this is the length of the period. Assume that the true values of the model parameters are $\beta_0 = 0$, $\beta_1 = 1$, and $\beta_2 = 2$. Confirm that the mean of $y_i$ is approximately 16.5, and the standard deviation of y i is approximately 14.7 (your results may differ by as much as one unit in each case due to Monte Carlo error).
 
 ```{R}
-set.seed(12345)
+set.seed(123)
 N <- 1000
 b0 <- 0
 b1 <- 1
 b2 <- 2
-simDF <- tibble(x1=runif(N), x2=runif(N)) %>% 
-    mutate(time=sample(1:6, N, replace=TRUE)) %>%
+simDF <- tibble(x1=runif(N, min=0, max=1), x2=runif(N, min=0, max=1)) %>% 
+    mutate(time=sample.int(5, size=N, replace=TRUE)) %>%
     mutate(y=rpois(N, time*exp(b0 + b1 * x1 + b2*x2)))
 
 cat(paste0("Y has a mean of ", round(mean(simDF$y), 4), "\n"))
