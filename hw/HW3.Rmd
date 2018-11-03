@@ -231,7 +231,7 @@ betaDraws <- t(rmvnorm(M, updateOPT$par, solve(updateOPT$hessian)))
 
 expand.grid(era=c(2, 3), year=1980:2002, winpct=mean(cyDF$winpct)) %>%
     cbind(model.matrix(fupdate[-2], .) %*% betaDraws) %>%
-    gather(key="simulation", value="value", `1`:`100`) %>%
+    gather(key="simulation", value="value", -(era:winpct)) %>%
     mutate(simulation=as.numeric(simulation), value=inv.logit(value)) %>%
     arrange(simulation, year, era) %>%
     group_by(year, simulation) %>%
