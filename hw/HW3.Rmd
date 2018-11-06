@@ -44,7 +44,7 @@ The dataset `cyyoung.csv` contains information on selected North American baseba
 
 Fit a logistic regression to the variable `cy` with `era` and `winpct` as the only covariates. Report the estimated parameters, their standard errors, and the log likelihood at its maximum. Perform this fit using `optim()`, then replicate the fit using `glm()`.
 
-Fitting our model using either the canned `glm` function in `R` vis writing our own likelihood in optim provided similar results as seen in the plot below. The likelihoods for both models, the coefficients, and the standard errors each provided similar results. From this point forward I will use `optim` for all analysis.
+Fitting our model using either the canned `glm` function in `R` vs writing our own likelihood in optim provided similar results as seen in the plot below. The likelihoods for both models, the coefficients, and the standard errors each provided similar results. From this point forward I will use `optim` for all analysis.
 
 ```{R, message=F, warning=F}
 evalParams <- function(params, formula, data=cyDF){
@@ -102,6 +102,8 @@ expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
 
 Calculate or simulate 95 percent confidence intervals for each of the probabilities plotted in b. (You may now use any package you wish.) Design a graphic (not a table) to incorporate these confidence intervals. Interpret your findings.
 
+The probabilities and their confidence intervals shown below show that though win percentage changes the probability of winning the award the confidence intervals show signficant overlap. The means the underlying probability has a signficant chance to be the same even as the win percent changes among the three levels we have presented at all levels of ERA seen in the data.
+
 ```{R}
 expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
     cbind(predict.opt(runOPT, newdata=., fog, sefit = 10000)) %>%
@@ -122,7 +124,7 @@ expand.grid(era=seq(1.5, 5, by=.25), winpct=c(mean(cyDF$winpct), .5, .9)) %>%
 
 Find a "better model" of `cy`. You may add other variables from the dataset, remove variables already in the model, and/or transform or any variables you wish, except `cy`. Whatever choice you make you should justify in some fashion. Fit your new model, and show whether your fit has improved using __(i)__ a likelihood ratio test, __(ii)__ AIC and/or BIC, __(iii)__ in-sample ROC curves, __(iv)__ in-sample Actual versus Predicted plots, and __(v)__ cross-validation using the metric(s) of your choice.
 
-I added in a new term for year and multiplied it alongside ERA as ERAs have improved over time and we might expect that lower eras would be more important in more recent years. The addition of two new terms was tested using the metrics above and for each test the inclusion of the new parameters was justified.
+I added in a new term for year and interacted it alongside ERA as ERAs have improved over time and we might expect that lower eras would be more important in more recent years. The addition of two new terms was tested using the metrics above and for each test the inclusion of the new parameters was justified.
 
 ```{R}
 fupdate <- cy ~ era * year + winpct
@@ -225,6 +227,8 @@ $$
 $$
 where $z_i$ is a covariate of particular interest and $x_i$ is a vector of additional covariates. We are interested in understanding how the conditional expectation of `cy` changes as $z$such that $z$ chnages from $z_{pre}$ to $z_{post}$. Then simulate the first difference in the probability (or, if you prefer, the relative risk) of receiving a Cy Young given the change in $z$, holding other covariates $\boldsymbol{x}$ constant (that is, make sure $\boldsymbol{x}_\text{pre} =\boldsymbol{x}\text{post}$). Display your results neatly in a plot or table, and be sure to show the uncertainty in these estimates.
 
+The plot below shows the changes in probability of winning the CY award when decreasing a pitchers ERA from 3 to 2 across all years in the data. The 95% confidence intervals shown are generated via simulation.
+
 ```{R}
 M <- 10000
 betaDraws <- t(rmvnorm(M, updateOPT$par, solve(updateOPT$hessian)))
@@ -247,7 +251,7 @@ expand.grid(era=c(2, 3), year=1980:2002, winpct=mean(cyDF$winpct)) %>%
     labs(y=TeX("$\\Delta$ Probability"), x="Year") +
     ggtitle(paste(
         "Change in Probability from Decreasing ERA from 3 to 2.",
-        "Confidince Intervals Created Via Simulation", sep="\n"))
+        "Confidince Intervals (95%) Created Via Simulation", sep="\n"))
 ```
 
 ## Section F  

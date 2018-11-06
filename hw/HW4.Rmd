@@ -9,6 +9,7 @@ output: pdf_document
 rm(list=ls())
 library(tidyverse)
 library(mvtnorm)
+library(latex2exp)
 
 anesDF <- "https://faculty.washington.edu/cadolph/mle/nes92con.csv" %>%
     read_csv
@@ -123,18 +124,23 @@ na.omit(anesDF[,all.vars(fog)]) %>%
 Present the expected probabilities for each category you calculated in part b in a way that would not require your reader to know anything about ordered probit models. Be sure to present confidence intervals, in a fashion of your choosing.
 
 ```{r}
+nDraws <- 1000
 dataMat <- na.omit(anesDF[,all.vars(fog)]) %>%
     select(-bushapp, -milforce, -partyid) %>%
     summarise_all(mean) %>%
     cbind(expand.grid(milforce=1:5, partyid=c(-3, 3)))
 
-simArray <- modelPredict(modelFit, dataMat, draws = 1000)
+simArray <- modelPredict(modelFit, dataMat, draws = nDraws)
 
-bind_rows(lapply(1:4, function(x) dataMat)) %>%
-    mutate(bushapp=rep(1:4, each=nrow(dataMat))) %>%
-    mutate(prob=c(apply(simArray, c(1,2), mean))) %>%
-    mutate(plwr=c(apply(simArray, c(1,2), quantile, probs=.025))) %>%
-    mutate(pupr=c(apply(simArray, c(1,2), quantile, probs=.975))) %>%
+bind_rows(lapply(1:nDraws, function(d){
+    bind_rows(lapply(1:4, function(x) mutate(dataMat, bushapp=x))) %>%
+        mutate(draw=d)})) %>%
+    mutate(value=c(simArray)) %>%
+    group_by(milforce, partyid, bushapp) %>%
+    summarize(
+        prob = mean(value),
+        plwr = quantile(value, probs=.025),
+        pupr = quantile(value, probs=.975)) %>%
     mutate(bushapp=as.factor(bushapp)) %>%
     mutate(Politics=if_else(
         partyid == 3, 
@@ -148,5 +154,38 @@ bind_rows(lapply(1:4, function(x) dataMat)) %>%
     theme_classic() +
     facet_wrap(~Politics) +
     labs(color="Bush\nApproval", fill="Bush\nApproval",
-         x="Military Force Support", y="Probability")
+         x="Opposition to Military Force Support", y="Probability")
+```
+
+```{r}
+bind_rows(lapply(1:nDraws, function(d){
+    bind_rows(lapply(1:4, function(x) mutate(dataMat, bushapp=x))) %>%
+        mutate(draw=d)})) %>%
+    mutate(value=c(simArray)) %>%
+    mutate(hiApp=bushapp >= 3) %>%
+    filter(milforce %in% c(1,4) & hiApp) %>%
+    group_by(partyid, draw, milforce) %>%
+    summarize(value=sum(value)) %>%
+    summarize(deltap=nth(value, 1) - nth(value, 2)) %>%
+    group_by(partyid) %>%
+    summarize(
+        dprob = mean(deltap),
+        dplwr = quantile(deltap, probs=.025),
+        dpupr = quantile(deltap, probs=.975)) %>%
+    mutate(Politics=if_else(
+        partyid == 3, 
+        "Strongly Republican",
+        "Strongly Democrat")) %>%
+    mutate(Politics=factor(
+        Politics, 
+        levels = c("Strongly Republican", "Strongly Democrat"))) %>%
+    ggplot(aes(x=Politics, y=dprob, ymin=dplwr, ymax=dpupr, color=Politics)) +
+    geom_point() +
+    geom_errorbar(width=.2) +
+    theme_classic() +
+    labs(y=TeX("$\\Delta$ Probability"), x="") +
+    guides(color=FALSE) +
+    ggtitle(paste(
+        "Increase in Approval and Strong Approval Probability",
+        "of Bush with Change In Approval of Military Force", sep="\n"))
 ```
