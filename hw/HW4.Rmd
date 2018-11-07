@@ -7,6 +7,7 @@ output: pdf_document
 
 ```{r setup, message=FALSE, warning=FALSE}
 rm(list=ls())
+library(MASS)
 library(tidyverse)
 library(mvtnorm)
 library(latex2exp)
@@ -91,6 +92,28 @@ modelPredict <- function(model, data, draws=NULL){
     }
     pArray
 }
+
+polrPredict <- function(model, data, draws=NULL){
+    X <- model.matrix(model$formula, data=data)[,-1]
+    if(is.null(draws)){
+        pArray <- t(sapply(c(X %*% model$coefficients), function(eta){
+            diff(c(0,arm::invlogit(model$zeta - eta), 1))}))
+    }
+    else{
+        pArray <- array(0, dim=c(nrow(X), length(model$zeta) + 1, draws))
+        for(d in 1:draws){
+            parMeans <- c(model$coefficients, model$zeta)
+            bDraws <- rmvnorm(draws, parMeans, vcov(model))
+            m_ <- list(
+                formula = model$formula,
+                coefficients = bDraws[d,1:ncol(X)],
+                zeta = bDraws[d,(ncol(X)+1):ncol(bDraws)]
+            )
+            pArray[,,d] <- polrPredict(m_, data, draws=NULL)
+        }
+    }
+    pArray
+}
 ```
 
 # A
@@ -157,6 +180,10 @@ bind_rows(lapply(1:nDraws, function(d){
          x="Opposition to Military Force Support", y="Probability")
 ```
 
+# D
+
+In this part, you are asked to summarize the model estimated in part a. using just two simulated first differences. You may not alter the model itself to eliminate or collapse categories, as this would throw away useful information. __i.__ Simulate the increase in probability of either approving or strongly approving of Bush given a shift from strong opposition to the use of force to strong support for a respondent who is a strong Democrat and otherwise average. Provide a 95% confidence interval. __ii.__ Simulate the increase in probability of either approving or strongly approving of Bush given a shift from strong opposition to the use of force to strong support for a respondent who is a strong Republican and otherwise average. Provide a 95% confidence interval.
+
 ```{r}
 bind_rows(lapply(1:nDraws, function(d){
     bind_rows(lapply(1:4, function(x) mutate(dataMat, bushapp=x))) %>%
@@ -188,4 +215,41 @@ bind_rows(lapply(1:nDraws, function(d){
     ggtitle(paste(
         "Increase in Approval and Strong Approval Probability",
         "of Bush with Change In Approval of Military Force", sep="\n"))
+```
+
+# E
+Based upon your work above, briefly discuss of the results of the model.
+
+# F
+The `llk.oprobit()` function is written for ordered data with four categories. Alter the function so that it can be used to estimate a three category ordered probit. Using `R`, create a new variable _econ3_ which collapses _econ_ into a three-category variable. 1 Fit a model to the variable econ3 with _partyid_ as the only covariates to see the effect of an individual's party id on their perception of the economy.  Simply run the model and report the estimated parameters. Perform this fit using your altered function and `optim()`. Bonus [+10 points]: Modify the likelihood function so that it works generically for any number of categories.
+
+```{r}
+econDF <- anesDF %>%
+    mutate(econ3=c(1, 1, 2, 3, 3)[econ]) %>%
+    select(econ3, partyid) %>%
+    na.omit
+    
+modelEconFit <- oprobit.fit(econ3 ~ partyid, econDF)
+tibble(
+    Parameter = names(modelEconFit$par),
+    Estimate = modelEconFit$par,
+    std.err = diag(solve(modelEconFit$hessian))
+)
+```
+
+```{r}
+data(housing)
+houseDF <- housing[rep(1:nrow(housing), housing$Freq),] %>%
+    as_tibble %>%
+    select(Sat, Infl, Cont) %>%
+    mutate_all(as.numeric) %>%
+    mutate(Sat=as.factor(Sat))
+
+fhouse <- Sat ~ Infl + Cont
+pModel <- polr(fhouse, data=houseDF, Hess=TRUE)
+pModel$formula <- fhouse
+oModel <- oprobit.fit(fhouse, houseDF)
+
+tail(predict(pModel, newdata = houseDF, type="probs"))
+tail(modelPredict(oModel, houseDF))
 ```
