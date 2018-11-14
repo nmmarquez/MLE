@@ -94,7 +94,7 @@ modelPredict <- function(model, data, draws=NULL){
 }
 
 polrPredict <- function(model, data, draws=NULL){
-    X <- model.matrix(model$formula, data=data)[,-1]
+    X <- model.matrix(update.formula(model$formula[-2], ~ . + 0), data=data)
     if(is.null(draws)){
         pArray <- t(sapply(c(X %*% model$coefficients), function(eta){
             diff(c(0,arm::invlogit(model$zeta - eta), 1))}))
@@ -223,13 +223,14 @@ Based upon your work above, briefly discuss of the results of the model.
 # F
 The `llk.oprobit()` function is written for ordered data with four categories. Alter the function so that it can be used to estimate a three category ordered probit. Using `R`, create a new variable _econ3_ which collapses _econ_ into a three-category variable. 1 Fit a model to the variable econ3 with _partyid_ as the only covariates to see the effect of an individual's party id on their perception of the economy.  Simply run the model and report the estimated parameters. Perform this fit using your altered function and `optim()`. Bonus [+10 points]: Modify the likelihood function so that it works generically for any number of categories.
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 econDF <- anesDF %>%
-    mutate(econ3=c(1, 1, 2, 3, 3)[econ]) %>%
+    mutate(econ3=as.factor(c(1, 1, 2, 3, 3)[econ])) %>%
     select(econ3, partyid) %>%
     na.omit
-    
-modelEconFit <- oprobit.fit(econ3 ~ partyid, econDF)
+
+eForm <- econ3 ~ partyid
+modelEconFit <- oprobit.fit(eForm, econDF)
 tibble(
     Parameter = names(modelEconFit$par),
     Estimate = modelEconFit$par,
@@ -237,19 +238,37 @@ tibble(
 )
 ```
 
-```{r}
-data(housing)
-houseDF <- housing[rep(1:nrow(housing), housing$Freq),] %>%
-    as_tibble %>%
-    select(Sat, Infl, Cont) %>%
-    mutate_all(as.numeric) %>%
-    mutate(Sat=as.factor(Sat))
+```{r, warning=FALSE, message=FALSE}
+pModel <- polr(eForm, data=econDF, Hess=TRUE)
+pModel$formula <- eForm
 
-fhouse <- Sat ~ Infl + Cont
-pModel <- polr(fhouse, data=houseDF, Hess=TRUE)
-pModel$formula <- fhouse
-oModel <- oprobit.fit(fhouse, houseDF)
+predEconDF <- unique(select(econDF, partyid))
 
-tail(predict(pModel, newdata = houseDF, type="probs"))
-tail(modelPredict(oModel, houseDF))
+bind_rows(
+    bind_rows(lapply(1:nDraws, function(d){
+        bind_rows(lapply(1:3, function(x) mutate(predEconDF, econ3=x))) %>%
+            mutate(draw=d)})) %>%
+        mutate(value=c(modelPredict(modelEconFit, predEconDF, draws=nDraws))) %>%
+        mutate(Model="Optim"),
+    bind_rows(lapply(1:nDraws, function(d){
+        bind_rows(lapply(1:3, function(x) mutate(predEconDF, econ3=x))) %>%
+            mutate(draw=d)})) %>%
+        mutate(value=c(polrPredict(pModel, predEconDF, draws=nDraws))) %>%
+        mutate(Model="Polr")) %>%
+    group_by(partyid, econ3, Model) %>%
+    summarize(
+        prob = mean(value),
+        plwr = quantile(value, probs=.025),
+        pupr = quantile(value, probs=.975)) %>%
+    ungroup %>%
+    mutate(econ3=as.factor(econ3)) %>%
+    ggplot(aes(
+        x=partyid, y=prob, group=econ3, fill=econ3, color=econ3,
+        ymin=plwr, ymax=pupr)) +
+    geom_line() +
+    geom_ribbon(alpha=.2) +
+    theme_classic() +
+    facet_wrap(~Model) +
+    labs(color="Econ", fill="Econ",
+         x="Party identification", y="Probability")
 ```
