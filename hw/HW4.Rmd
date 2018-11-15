@@ -138,6 +138,8 @@ dataMat <- na.omit(anesDF[,all.vars(fog)]) %>%
 
 simArray <- modelPredict(modelFit, dataMat, draws = nDraws)
 
+appGroups <- c("Strong Disapprove", "Disapprove", "Approve", "Strong Approve")
+
 bind_rows(lapply(1:nDraws, function(d){
     bind_rows(lapply(1:4, function(x) mutate(dataMat, bushapp=x))) %>%
         mutate(draw=d)})) %>%
@@ -147,7 +149,7 @@ bind_rows(lapply(1:nDraws, function(d){
         prob = mean(value),
         plwr = quantile(value, probs=.025),
         pupr = quantile(value, probs=.975)) %>%
-    mutate(bushapp=as.factor(bushapp)) %>%
+    mutate(bushapp=factor(appGroups[bushapp], levels=appGroups)) %>%
     mutate(Politics=if_else(
         partyid == 3,
         "Strongly Republican",
@@ -160,7 +162,9 @@ bind_rows(lapply(1:nDraws, function(d){
     theme_classic() +
     facet_wrap(~Politics) +
     labs(color="Bush\nApproval", fill="Bush\nApproval",
-         x="Opposition to Military Force", y="Probability")
+         x="Opposition to Military Force", y="Probability") +
+    scale_color_brewer(palette="RdYlGn") +
+    scale_fill_brewer(palette="RdYlGn")
 ```
 
 # D
@@ -203,7 +207,7 @@ bind_rows(lapply(1:nDraws, function(d){
 # E
 Based upon your work above, briefly discuss of the results of the model.
 
-The model shows that as opposition to military force increases Bush's approval rating drops. This is different depending on political alignment where we can see that on average across all levels of military support Bush's approval rating is lower for strongly Democrats(partyid==-3) than it is for strong Republicans(partyid==3) as seen in section `C`. We also see that as we change support for military force from strongly opposed to strongly in support of, there is a differential effect on the increase of being either approval or strong approval depending on party alignment as seen in section `D`.
+The model shows that as opposition to military force increases Bush's approval rating drops. This is different depending on political alignment where we can see that on average across all levels of military support Bush's approval rating is lower for strongly Democrats(partyid==-3) than it is for strong Republicans(partyid==3) as seen in section `C`. We also see that as we change support for military force from strongly opposed to strongly in support of, there is a differential effect on the increase of being either approval or strong approval depending on party alignment as seen in section `D`. This effect is probably not signficant, we did not explicitly test that, because there is a large overlap between the two confidence intervals. This is not to say that the effect is the same as we see in the first plot as opposition to military force moves from 5 to 1 most of the weight of the distribution moves to disapprove and approve for strong democrats while for republicans it moves largely to  approve and strongly approve.
 
 # F
 The `llk.oprobit()` function is written for ordered data with four categories. Alter the function so that it can be used to estimate a three category ordered probit. Using `R`, create a new variable _econ3_ which collapses _econ_ into a three-category variable. 1 Fit a model to the variable econ3 with _partyid_ as the only covariates to see the effect of an individual's party id on their perception of the economy.  Simply run the model and report the estimated parameters. Perform this fit using your altered function and `optim()`. Bonus [+10 points]: Modify the likelihood function so that it works generically for any number of categories.
