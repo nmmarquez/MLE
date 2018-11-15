@@ -160,7 +160,7 @@ bind_rows(lapply(1:nDraws, function(d){
     theme_classic() +
     facet_wrap(~Politics) +
     labs(color="Bush\nApproval", fill="Bush\nApproval",
-         x="Opposition to Military Force Support", y="Probability")
+         x="Opposition to Military Force", y="Probability")
 ```
 
 # D
@@ -193,7 +193,7 @@ bind_rows(lapply(1:nDraws, function(d){
     geom_point() +
     geom_errorbar(width=.2) +
     theme_classic() +
-    labs(y=TeX("$\\Delta$ Probability"), x="") +
+    labs(y="Change in Probability", x="") +
     guides(color=FALSE) +
     ggtitle(paste(
         "Increase in Approval and Strong Approval Probability",
