@@ -139,7 +139,8 @@ na.omit(anesDF[,all.vars(fog)]) %>%
     select(-bushapp, -milforce, -partyid) %>%
     summarise_all(mean) %>%
     cbind(expand.grid(milforce=1:5, partyid=c(-3, 3))) %>%
-    cbind(modelPredict(modelFit, .))
+    cbind(round(modelPredict(modelFit, .), 4)) %>%
+    select(milforce:`4`)
 ```
 
 # C
@@ -242,19 +243,21 @@ tibble(
 pModel <- polr(eForm, data=econDF, Hess=TRUE)
 pModel$formula <- eForm
 
-predEconDF <- unique(select(econDF, partyid))
+pEconDF <- unique(select(econDF, partyid))
 
-bind_rows(
+econDrawDF <- bind_rows(
     bind_rows(lapply(1:nDraws, function(d){
-        bind_rows(lapply(1:3, function(x) mutate(predEconDF, econ3=x))) %>%
+        bind_rows(lapply(1:3, function(x) mutate(pEconDF, econ3=x))) %>%
             mutate(draw=d)})) %>%
-        mutate(value=c(modelPredict(modelEconFit, predEconDF, draws=nDraws))) %>%
+        mutate(value=c(modelPredict(modelEconFit, pEconDF, draws=nDraws))) %>%
         mutate(Model="Optim"),
     bind_rows(lapply(1:nDraws, function(d){
-        bind_rows(lapply(1:3, function(x) mutate(predEconDF, econ3=x))) %>%
+        bind_rows(lapply(1:3, function(x) mutate(pEconDF, econ3=x))) %>%
             mutate(draw=d)})) %>%
-        mutate(value=c(polrPredict(pModel, predEconDF, draws=nDraws))) %>%
-        mutate(Model="Polr")) %>%
+        mutate(value=c(polrPredict(pModel, pEconDF, draws=nDraws))) %>%
+        mutate(Model="Polr"))
+
+econDrawDF %>%
     group_by(partyid, econ3, Model) %>%
     summarize(
         prob = mean(value),
@@ -271,4 +274,19 @@ bind_rows(
     facet_wrap(~Model) +
     labs(color="Econ", fill="Econ",
          x="Party identification", y="Probability")
+
+econDrawDF %>%
+    filter(econ3 != 3) %>%
+    group_by(partyid, Model, draw) %>%
+    summarize(value=sum(value)) %>%
+    summarize(
+        dprob = mean(value),
+        dplwr = quantile(value, probs=.025),
+        dpupr = quantile(value, probs=.975)) %>%
+    ggplot(aes(x=partyid, y=dprob, ymax=dpupr, ymin=dplwr)) +
+    geom_line() +
+    geom_ribbon(alpha=.2) +
+    theme_classic() +
+    facet_wrap(~Model) +
+    labs(x="Party identification", y=TeX("Pr(Econ $\\neq$ 3)"))
 ```
