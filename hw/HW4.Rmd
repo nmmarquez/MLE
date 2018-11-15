@@ -5,6 +5,9 @@ date: "November 5, 2018"
 output: pdf_document
 ---
 
+# A
+Use an ordered probit model to explain respondents approval of Bush. Using the `llk.oprobit()` function provided in class and `optim()`, fit the model to the variable _bushapp_ with _milforce_, _rbdist_, _econ_, _partyid_, and _yrsofed_ as the only covariates. Report the estimated parameters, their standard errors, and the value of the log likelihood at its maximum.
+
 ```{r setup, message=FALSE, warning=FALSE}
 rm(list=ls())
 library(MASS)
@@ -12,9 +15,11 @@ library(tidyverse)
 library(mvtnorm)
 library(latex2exp)
 
+# Load in the anes data set
 anesDF <- "https://faculty.washington.edu/cadolph/mle/nes92con.csv" %>%
     read_csv
 
+# rewrite llk.oprobit4 to be more flexible
 llk.oprobit.new <- function(param, formula, data){
     x <- model.matrix(formula[-2], data=data)
     y <- unlist(data[,all.vars(formula)[1]])
@@ -30,7 +35,7 @@ llk.oprobit.new <- function(param, formula, data){
         i <- i + 1
         tlag <- taus[i-1]
         if(t <= tlag){
-            pMatrix[,i] <- -(abs(t)*10000) 
+            pMatrix[,i] <- -(abs(t)*10000)
         }
         else{
             pMatrix[,i] <- log(pnorm(t-xb)-pnorm(tlag-xb))
@@ -41,11 +46,15 @@ llk.oprobit.new <- function(param, formula, data){
     -sum(pMatrix * yMat)
 }
 
+
+
+
+# wrap the fit function of oprobit into a convenient wrapper
 oprobit.fit <- function(formula, data){
     xN <- ncol(model.matrix(formula[-2], data=data))
     yN <- length(unique(unlist(data[,all.vars(formula)[1]])))
     tauStarts <- 1:(yN-2)
-    names(tauStarts) <- paste0("tau", 2:(yN-1)) 
+    names(tauStarts) <- paste0("tau", 2:(yN-1))
 
     pStart <- c(coef(lm(formula, data=data)), tauStarts)
     optFit <- optim(
@@ -59,6 +68,21 @@ oprobit.fit <- function(formula, data){
     optFit
 }
 
+fog <- bushapp ~ milforce + rbdist + econ + partyid + yrsofed
+modelFit <- oprobit.fit(fog, na.omit(anesDF[,all.vars(fog)]))
+cat(paste0("Log Likelihood at the maximum: ", round(-modelFit$value, 4)))
+tibble(
+    Parameter = names(modelFit$par),
+    Estimate = modelFit$par,
+    std.err = diag(solve(modelFit$hessian))
+)
+```
+
+# B
+Calculate the probabilities that a respondent who identified themselves as a strong Democrat ( _partyid_ = -3) said they "Strongly Disapproved", "Disapproved", "Approved", or "Strongly Approved" of President Bush given their support or opposition to military force ( _milforce_ = $\{1, 2, 3, 4, 5\}$), holding the remaining covariates at their mean values.  Calculate the probabilities again over the same range of responses for _milforce_ for a respondent who identified themselves as a strong Republican ( _partyid_ = 3). You should have two sets of 20 probabilities, or 40 probabilities total.
+
+```{r}
+# Predict function for ordered probit model
 modelPredict <- function(model, data, draws=NULL){
     x <- model.matrix(model$formula[-2], data=data)
     yN <- length(model$par) - ncol(x) + 2
@@ -93,48 +117,6 @@ modelPredict <- function(model, data, draws=NULL){
     pArray
 }
 
-polrPredict <- function(model, data, draws=NULL){
-    X <- model.matrix(update.formula(model$formula[-2], ~ . + 0), data=data)
-    if(is.null(draws)){
-        pArray <- t(sapply(c(X %*% model$coefficients), function(eta){
-            diff(c(0,arm::invlogit(model$zeta - eta), 1))}))
-    }
-    else{
-        pArray <- array(0, dim=c(nrow(X), length(model$zeta) + 1, draws))
-        for(d in 1:draws){
-            parMeans <- c(model$coefficients, model$zeta)
-            bDraws <- rmvnorm(draws, parMeans, vcov(model))
-            m_ <- list(
-                formula = model$formula,
-                coefficients = bDraws[d,1:ncol(X)],
-                zeta = bDraws[d,(ncol(X)+1):ncol(bDraws)]
-            )
-            pArray[,,d] <- polrPredict(m_, data, draws=NULL)
-        }
-    }
-    pArray
-}
-```
-
-# A
-Use an ordered probit model to explain respondents approval of Bush. Using the `llk.oprobit()` function provided in class and `optim()`, fit the model to the variable _bushapp_ with _milforce_, _rbdist_, _econ_, _partyid_, and _yrsofed_ as the only covariates. Report the estimated parameters, their standard errors, and the value of the log likelihood at its maximum.
-
-```{r}
-fog <- bushapp ~ milforce + rbdist + econ + partyid + yrsofed
-modelFit <- oprobit.fit(fog, na.omit(anesDF[,all.vars(fog)]))
-cat(paste0("Log Likelihood at the maximum: ", round(-modelFit$value, 4)))
-tibble(
-    Parameter = names(modelFit$par),
-    Estimate = modelFit$par,
-    std.err = diag(solve(modelFit$hessian))
-)
-
-```
-
-# B
-Calculate the probabilities that a respondent who identified themselves as a strong Democrat ( _partyid_ = -3) said they "Strongly Disapproved", "Disapproved", "Approved", or "Strongly Approved" of President Bush given their support or opposition to military force ( _milforce_ = $\{1, 2, 3, 4, 5\}$), holding the remaining covariates at their mean values.  Calculate the probabilities again over the same range of responses for _milforce_ for a respondent who identified themselves as a strong Republican ( _partyid_ = 3). You should have two sets of 20 probabilities, or 40 probabilities total.
-
-```{r}
 na.omit(anesDF[,all.vars(fog)]) %>%
     select(-bushapp, -milforce, -partyid) %>%
     summarise_all(mean) %>%
@@ -167,7 +149,7 @@ bind_rows(lapply(1:nDraws, function(d){
         pupr = quantile(value, probs=.975)) %>%
     mutate(bushapp=as.factor(bushapp)) %>%
     mutate(Politics=if_else(
-        partyid == 3, 
+        partyid == 3,
         "Strongly Republican",
         "Strongly Democrat")) %>%
     ggplot(aes(
@@ -191,7 +173,7 @@ bind_rows(lapply(1:nDraws, function(d){
         mutate(draw=d)})) %>%
     mutate(value=c(simArray)) %>%
     mutate(hiApp=bushapp >= 3) %>%
-    filter(milforce %in% c(1,4) & hiApp) %>%
+    filter(milforce %in% c(1,5) & hiApp) %>%
     group_by(partyid, draw, milforce) %>%
     summarize(value=sum(value)) %>%
     summarize(deltap=nth(value, 1) - nth(value, 2)) %>%
@@ -201,11 +183,11 @@ bind_rows(lapply(1:nDraws, function(d){
         dplwr = quantile(deltap, probs=.025),
         dpupr = quantile(deltap, probs=.975)) %>%
     mutate(Politics=if_else(
-        partyid == 3, 
+        partyid == 3,
         "Strongly Republican",
         "Strongly Democrat")) %>%
     mutate(Politics=factor(
-        Politics, 
+        Politics,
         levels = c("Strongly Republican", "Strongly Democrat"))) %>%
     ggplot(aes(x=Politics, y=dprob, ymin=dplwr, ymax=dpupr, color=Politics)) +
     geom_point() +
@@ -221,8 +203,12 @@ bind_rows(lapply(1:nDraws, function(d){
 # E
 Based upon your work above, briefly discuss of the results of the model.
 
+The model shows that as opposition to military force increases Bush's approval rating drops. This is different depending on political alignment where we can see that on average across all levels of military support Bush's approval rating is lower for strongly Democrats(partyid==-3) than it is for strong Republicans(partyid==3) as seen in section `C`. We also see that as we change support for military force from strongly opposed to strongly in support of, there is a differential effect on the increase of being either approval or strong approval depending on party alignment as seen in section `D`.
+
 # F
 The `llk.oprobit()` function is written for ordered data with four categories. Alter the function so that it can be used to estimate a three category ordered probit. Using `R`, create a new variable _econ3_ which collapses _econ_ into a three-category variable. 1 Fit a model to the variable econ3 with _partyid_ as the only covariates to see the effect of an individual's party id on their perception of the economy.  Simply run the model and report the estimated parameters. Perform this fit using your altered function and `optim()`. Bonus [+10 points]: Modify the likelihood function so that it works generically for any number of categories.
+
+Modified function for working with any number of groups is above in the codeblock in section `A`.
 
 ```{r, warning=FALSE, message=FALSE}
 econDF <- anesDF %>%
@@ -239,7 +225,35 @@ tibble(
 )
 ```
 
+# G
+After you have completed the above parts of the problem, look carefully at the example given in the help for `oprobitsimev` in the `simcf` package. Re-estimate your model using the `polr` function from the `MASS` library. `polr` uses an alternative parameterization of the ordered probit which drops the model's constant in favor of an additional cutpoint (i.e., instead of using a constant and k-2 cutpoints for a k category response variable, `polr` uses k-1 cutpoints and no constant). Note the changes in how we use `oprobitsimev` when using `polr` to estimate ordered probit. Then show that whether we use `optim` or `polr`, we end up with exactly the same predicted probabilities for each category of our response for any given counterfactual scenario.
+
+No matter how we parameterize the model, either with k-2 cut points and an intercept as in the `oprobit` functions or with `polr` and k-1 cutpoints we see the same outcome in both predicted probabilities and counterfactual scenarios. The first plot below shows the predicted probabilities of being in each `econ3` group, that is perceiving the economy as worse, same, or better than before, as a function of party alignment.
+
+
 ```{r, warning=FALSE, message=FALSE}
+polrPredict <- function(model, data, draws=NULL){
+    X <- model.matrix(update.formula(model$formula[-2], ~ . + 0), data=data)
+    if(is.null(draws)){
+        pArray <- t(sapply(c(X %*% model$coefficients), function(eta){
+            diff(c(0,arm::invlogit(model$zeta - eta), 1))}))
+    }
+    else{
+        pArray <- array(0, dim=c(nrow(X), length(model$zeta) + 1, draws))
+        for(d in 1:draws){
+            parMeans <- c(model$coefficients, model$zeta)
+            bDraws <- rmvnorm(draws, parMeans, vcov(model))
+            m_ <- list(
+                formula = model$formula,
+                coefficients = bDraws[d,1:ncol(X)],
+                zeta = bDraws[d,(ncol(X)+1):ncol(bDraws)]
+            )
+            pArray[,,d] <- polrPredict(m_, data, draws=NULL)
+        }
+    }
+    pArray
+}
+
 pModel <- polr(eForm, data=econDF, Hess=TRUE)
 pModel$formula <- eForm
 
@@ -264,7 +278,7 @@ econDrawDF %>%
         plwr = quantile(value, probs=.025),
         pupr = quantile(value, probs=.975)) %>%
     ungroup %>%
-    mutate(econ3=as.factor(econ3)) %>%
+    mutate(econ3=c("Better", "Same", "Worse")[econ3]) %>%
     ggplot(aes(
         x=partyid, y=prob, group=econ3, fill=econ3, color=econ3,
         ymin=plwr, ymax=pupr)) +
@@ -272,8 +286,12 @@ econDrawDF %>%
     geom_ribbon(alpha=.2) +
     theme_classic() +
     facet_wrap(~Model) +
-    labs(color="Econ", fill="Econ",
-         x="Party identification", y="Probability")
+    labs(color="Economy", fill="Economy",
+         x="Party Identification", y="Probability") +
+    scale_x_continuous(
+        breaks=c(-2.4,0,2.4),
+        labels=c("Strong\nDemocrat", "Independent", "Strong\nRepublican")) +
+    ggtitle("Perception of Economy Change Across Party Identification")
 
 econDrawDF %>%
     filter(econ3 != 3) %>%
@@ -288,5 +306,10 @@ econDrawDF %>%
     geom_ribbon(alpha=.2) +
     theme_classic() +
     facet_wrap(~Model) +
-    labs(x="Party identification", y=TeX("Pr(Econ $\\neq$ 3)"))
+    labs(x="Party Identification", y=TeX("Pr(Econ $\\neq$ Worse)")) +
+    scale_x_continuous(
+        breaks=c(-2.7,0,2.7),
+        labels=c("Strong\nDemocrat", "Independent", "Strong\nRepublican")) +
+    ggtitle(
+        "Probability of Economy Not Being Percieved than Worse as Last Year")
 ```
