@@ -1,0 +1,116 @@
+---
+title: "Homework 4"
+author: "Neal Marquez"
+date: "November 25, 2018"
+output: pdf_document
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+rm(list=ls())
+library(MASS)
+library(nnet)
+library(tidyverse)
+library(mvtnorm)
+library(latex2exp)
+library(knitr)
+
+# Load in the anes data set
+anesDF <- "https://faculty.washington.edu/cadolph/mle/nes92con.csv" %>%
+    read_csv %>%
+    mutate(vote92=factor(c("Bush", "Clinton", "Perot")[vote92+1]))
+```
+
+### Problem 1: Modeling Vote Choice with Multinomial Logit
+
+In this problem you will again use data from the 1992 American National Election Study. The data are taken from a nationally representative sample of the US population. The survey was conducted in the fall of 1992 with a reinterview of the respondents following the election. In the data you will be using, only the vote report is taken from the post-election interview.  
+
+The dataset `nes92.csv` contains information on the vote for President and approval of then-President Bush along with several variables selected to capture the range of influences that current work on voting behavior expects to be important. Descriptions of the variables are at the end of this assignment.
+
+#### A  
+
+Use a multinomial logit model to explain respondents' 1992 Presidential vote choice. Using `multinom()` from the `nnet` library, fit the model to the variable `vote92` with `rlibcon`, `rbdist`, `econ`, `gulfwar`, and `nonwhite` as the only covariates. Report the estimated parameters, their standard errors, and the value of the log likelihood at its maximum.
+
+```{r}
+nnFit <- multinom(
+    vote92 ~ rlibcon + rbdist + econ + gulfwar + nonwhite, 
+    data = anesDF,
+    trace = FALSE)
+```
+
+```{r echo=F}
+cat(paste0("Log Likelihood: ", round(logLik(nnFit), 2)))
+coefficients(nnFit) %>%
+    as.data.frame %>%
+    mutate(Candidate=row.names(.)) %>%
+    gather("Coefficient", "Estimate", -Candidate) %>%
+    as_tibble %>%
+    mutate(`Std. Errors`=c(summary(nnFit)[["standard.errors"]])) %>%
+    kable()
+
+```
+
+#### B
+Calculate the probability that a white respondent voted for Bush, Clinton, or Perot, given each self-reported position on the liberal-conservative continuum (`rlibcon` $= \{1, 2, 3, 4, 5, 6, 7\}$ and all other covariates held at their means. Next, calculate the probabilities for a nonwhite respondent.
+
+```{R}
+# function for predicting
+ratio2Pred <- function(data, model, draws=NULL, X=NULL){
+    if(is.null(model$par)){
+        model$par <- c(t(coefficients(model)))
+    }
+    G <- nrow(coefficients(model)) + 1
+    if(is.null(X)){
+        # lets not redo this for every draw
+        X <- model.matrix(as.formula(model$call$formula[-2]), data)
+    }
+    if(!is.null(draws)){
+        # recursive process for simulations
+        betas_ <- rmvnorm(draws, model$par, vcov(model))
+        y_prob <- array(0, dim=c(nrow(data), G, draws))
+        for(d in 1:draws){
+            m <- model
+            m$par <- betas_[d,] # treat the sims like true values
+            y_prob[,,d] <- ratio2Pred(data, m, X=X) # rerun function with sim
+        }
+    }
+    else{
+        # transform vector of beta paramters into matrix for ease of use
+        betas_ <- matrix(model$par, ncol=G-1, nrow=ncol(X))
+        # get the ratios for the groups vs ref
+        ratio_ref <- exp(X %*% betas_)
+        # the response var is transformed to probability space
+        p1 <- apply(ratio_ref, 1, function(x) 1 / (1 + sum(x)))
+        y_prob <- unname(cbind(p1, ratio_ref * p1))
+    }
+    return(y_prob)
+}
+
+predDF <- anesDF %>%
+    select(rbdist, econ, gulfwar) %>%
+    summarize_all(mean, na.rm=TRUE) %>%
+    cbind(expand.grid(rlibcon=1:7, nonwhite=0:1))
+
+nDraws <- 1000
+simArray <- ratio2Pred(predDF, nnFit, nDraws)
+candidates <- levels(anesDF$vote92)
+
+bind_rows(lapply(1:nDraws, function(d){
+    bind_rows(lapply(candidates, function(x) mutate(predDF, vote=x))) %>%
+        mutate(draw=d)})) %>%
+    mutate(value=c(simArray)) %>%
+    group_by(rlibcon, vote, nonwhite) %>%
+    summarize(
+        prob = mean(value),
+        plwr = quantile(value, probs=.025),
+        pupr = quantile(value, probs=.975)) %>%
+    ungroup %>%
+    mutate(vote=factor(vote, levels=c("Bush", "Perot", "Clinton"))) %>%
+    mutate(nonwhite=c("White", "Non-White")[nonwhite+1]) %>%
+    ggplot(aes(x=rlibcon, y=prob, group=vote, ymin=plwr, ymax=pupr)) +
+    geom_line(aes(color=vote)) +
+    geom_ribbon(aes(fill=vote), alpha=.2) +
+    theme_classic() +
+    facet_wrap(~nonwhite) +
+    labs(color="Candidate", fill="Candidate",
+         x="Idealogical Self Placement", y="Probability")
+```
