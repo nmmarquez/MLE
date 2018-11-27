@@ -1,7 +1,7 @@
 ---
-title: "Homework 4"
+title: "Homework 5"
 author: "Neal Marquez"
-date: "November 25, 2018"
+date: "November 27, 2018"
 output: pdf_document
 ---
 
@@ -33,7 +33,7 @@ Use a multinomial logit model to explain respondents' 1992 Presidential vote cho
 
 ```{r}
 nnFit <- multinom(
-    vote92 ~ rlibcon + rbdist + econ + gulfwar + nonwhite, 
+    vote92 ~ rlibcon + rbdist + econ + gulfwar + nonwhite,
     data = anesDF,
     trace = FALSE)
 ```
@@ -46,12 +46,14 @@ coefficients(nnFit) %>%
     gather("Coefficient", "Estimate", -Candidate) %>%
     as_tibble %>%
     mutate(`Std. Errors`=c(summary(nnFit)[["standard.errors"]])) %>%
-    kable()
+    kable(digits=4)
 
 ```
 
 #### B
 Calculate the probability that a white respondent voted for Bush, Clinton, or Perot, given each self-reported position on the liberal-conservative continuum (`rlibcon` $= \{1, 2, 3, 4, 5, 6, 7\}$ and all other covariates held at their means. Next, calculate the probabilities for a nonwhite respondent.
+
+Below we build functions for calculating the probabilities and uncertainty via simulation for average covariate values and values of `rlibcon` described above for both white and nonwhite respondents.
 
 ```{R}
 # function for predicting
@@ -100,6 +102,8 @@ candidates <- levels(anesDF$vote92)
 
 Present the expected probabilities of a vote for each presidential candidate calculated in part b in a way that would not require your reader to know anything about multinomial logit models. Include the uncertainty of your estimates in your presentation. Briefly discuss the results of the model.
 
+The results below show the change in predicted probabilities across the spectrum of ideological placement where 1 is most liberal and 7 is most conservative. The results show what is probably obvious to most, that as ideology tends towards more conservative the probability of voting for Clinton decreases and the probability of voting for Perot and Bush increases. Interestingly, this effect is different for whites and non-whites, where nonwhites are more likely to vote for Clinton at all levels of political ideology.
+
 ```{R}
 bind_rows(lapply(1:nDraws, function(d){
     bind_rows(lapply(candidates, function(x) mutate(predDF, vote=x))) %>%
@@ -127,22 +131,76 @@ bind_rows(lapply(1:nDraws, function(d){
 #### A  
 Consider two variables $x$ and $y$ where $y$ is generated from $x$ as a a Bernoulli draw with probability of success $\text{logit}^{-1}(x \beta)$ where the true value of $\beta$ is 2 and is unknown from our perspective. Suppose that we observe eight instances of these variables, $\boldsymbol{y} = (1,0,0,0,1,0,0,0)$ and $\boldsymbol{x} = (5, -2, -2, -2, 5, -2, -2, -2)$. Using the Bernoulli-logit likelihood, show the profile likelihood of $\beta$ over the domain $[-10,10]$. Interpret the likelihood surface you have found.
 
+Whereas, we would expect to find a profile likelihood peak at a value and then decay at either side, the likelihood, and log-likelihood, continue to increase as the value increases. This is because the likelihood will continue to improve as $\hat{\beta}$ increases because the outcome is linearly separable using the covariates provided.
+
 ```{R}
 sampDF <- tibble(
     y = c(1,0,0,0,1,0,0,0),
     x = c(5, -2, -2, -2, 5, -2, -2, -2))
 
 tibble(bhat=seq(-10, 10, length.out=1000)) %>%
-    mutate(lik=sapply(bhat, function(b){
+    mutate(Likelihood=sapply(bhat, function(b){
         prod(dbinom(sampDF$y, 1, invlogit(b * sampDF$x)))
     })) %>%
+    mutate(`Log Likelihood`=sapply(bhat, function(b){
+        sum(dbinom(sampDF$y, 1, invlogit(b * sampDF$x), log=T))
+    })) %>%
+    gather(key="Type", value="lik", -bhat) %>%
     ggplot(aes(x=bhat, y=lik)) +
     geom_line() +
     theme_classic() +
-    labs(x=TeX("$\\hat{\\beta}$"), y="Profile Likelihood")
-
+    labs(x=TeX("$\\hat{\\beta}$"), y="Profile Likelihood") +
+    facet_wrap(~Type, scales="free")
 ```
 
 #### B
-Estimatealogitmodelof $y$ as a function of $x$ and report the estimated coefficients and their standard errors. Use both the logit MLE and GLM with a logit link to estimate the model. Do you trust these results? What do you think is happening?
+Estimate a logit model of $y$ as a function of $x$ and report the estimated coefficients and their standard errors. Use both the logit MLE and GLM with a logit link to estimate the model. Do you trust these results? What do you think is happening?
 
+The results below show that for both GLM and MLE, the standard errors are exceedingly large and we should call into question whether these results are valid. What is likely happening is that the profile likelihood surface is extremely flat, which is expected as the likelihood function provides marginally larger values when we increase $\hat{\beta}$. This leads to huge estimates of the 95% confidence intervals.
+
+```{R, warning=FALSE}
+glmFit <- glm(y ~ x + 0, data=sampDF, family=binomial)
+
+binom1eval <- function(param){
+    -sum(dbinom(sampDF$y, 1, invlogit(param * sampDF$x), log=TRUE))
+}
+
+optimFit <- optim(0, binom1eval, method="BFGS", hessian=TRUE)
+st.err <- sqrt(optimFit$hessian^-1)
+
+tibble(
+    Estimate = c(coefficients(glmFit), optimFit$par),
+    `Standard Error` = c(sqrt(vcov(glmFit)), st.err),
+    Method = c("GLM", "MLE")) %>%
+    kable(digits=2)
+```
+
+#### C
+Now consider some real-world data, provided by Daniel Stegmuller. The file `India.Rdata` contains a dataframe called `govcollapse` which records incidents of government collapse in India (see table below for a description). Fit a logistic regression to the variable `collapse` using all the covariates in `govcollapse`. Report the estimated parameters, their standard errors, and the log likelihood at its maximum using `glm()`. Do you have any concerns about these estimates?
+
+Again, we find a similar situation where the standard errors for the model are extremely large. This is because again the covariates provide a space where the response variable can be linearly separated, which leads to flat profile likelihoods and extreme standard errors. We should be very skeptical of the results provided by this model fit.
+
+```{R, warning=FALSE}
+load(url("https://faculty.washington.edu/cadolph/mle/India.Rdata"))
+govFit <- glm(collapse ~ . , data=govcollapse, family=binomial)
+cat(paste0("Log Likelihood: ", signif(logLik(govFit), 5)))
+summary(govFit)$coefficients %>%
+    kable(digits=4)
+```
+
+#### D
+Examine the in-sample predicted probabilities of government collapse and plot them against each covariate. Do you notice any problems with these predictions? What might you do to improve them and would your proposed fix have any downside? Does this example raise general concerns about the proper use of logistic regression?
+
+The predictions below show that across covariates we have nearly certain predictions of 1 or 0. In order to improve our predictions we should trim down the number of covariates that we use and test our model in terms of out of sample validity. A downside to this is that the inclusion of all variables may in fact be the true data generating process but the data that we have does not permit us to use an MLE approach to fit the model. This example shows us the limitations that we reach when fitting a model with an MLE approach and we may need to use a Bayesian approach if we truely believe the inclusion of all variables best reflects the process being analyzed.
+
+```{R}
+govcollapse %>%
+    mutate(pred=invlogit(predict(govFit))) %>%
+    select(-collapse) %>%
+    gather("Variable", "Value", -pred) %>%
+    ggplot(aes(Value, pred)) +
+    geom_point() +
+    theme_classic() +
+    facet_wrap(~Variable) +
+    labs(x="Covariate Value", y="Prediction")
+```
