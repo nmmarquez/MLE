@@ -13,6 +13,7 @@ library(tidyverse)
 library(mvtnorm)
 library(latex2exp)
 library(knitr)
+library(arm)
 
 # Load in the anes data set
 anesDF <- "https://faculty.washington.edu/cadolph/mle/nes92con.csv" %>%
@@ -93,7 +94,13 @@ predDF <- anesDF %>%
 nDraws <- 1000
 simArray <- ratio2Pred(predDF, nnFit, nDraws)
 candidates <- levels(anesDF$vote92)
+```
 
+#### C
+
+Present the expected probabilities of a vote for each presidential candidate calculated in part b in a way that would not require your reader to know anything about multinomial logit models. Include the uncertainty of your estimates in your presentation. Briefly discuss the results of the model.
+
+```{R}
 bind_rows(lapply(1:nDraws, function(d){
     bind_rows(lapply(candidates, function(x) mutate(predDF, vote=x))) %>%
         mutate(draw=d)})) %>%
@@ -114,3 +121,28 @@ bind_rows(lapply(1:nDraws, function(d){
     labs(color="Candidate", fill="Candidate",
          x="Idealogical Self Placement", y="Probability")
 ```
+
+### Problem 2
+
+#### A  
+Consider two variables $x$ and $y$ where $y$ is generated from $x$ as a a Bernoulli draw with probability of success $\text{logit}^{-1}(x \beta)$ where the true value of $\beta$ is 2 and is unknown from our perspective. Suppose that we observe eight instances of these variables, $\boldsymbol{y} = (1,0,0,0,1,0,0,0)$ and $\boldsymbol{x} = (5, -2, -2, -2, 5, -2, -2, -2)$. Using the Bernoulli-logit likelihood, show the profile likelihood of $\beta$ over the domain $[-10,10]$. Interpret the likelihood surface you have found.
+
+```{R}
+sampDF <- tibble(
+    y = c(1,0,0,0,1,0,0,0),
+    x = c(5, -2, -2, -2, 5, -2, -2, -2))
+
+tibble(bhat=seq(-10, 10, length.out=1000)) %>%
+    mutate(lik=sapply(bhat, function(b){
+        prod(dbinom(sampDF$y, 1, invlogit(b * sampDF$x)))
+    })) %>%
+    ggplot(aes(x=bhat, y=lik)) +
+    geom_line() +
+    theme_classic() +
+    labs(x=TeX("$\\hat{\\beta}$"), y="Profile Likelihood")
+
+```
+
+#### B
+Estimatealogitmodelof $y$ as a function of $x$ and report the estimated coefficients and their standard errors. Use both the logit MLE and GLM with a logit link to estimate the model. Do you trust these results? What do you think is happening?
+
