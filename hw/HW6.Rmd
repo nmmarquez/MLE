@@ -1,0 +1,71 @@
+---
+title: "Homework 5"
+author: "Neal Marquez"
+date: "November 28, 2018"
+output: pdf_document
+---
+
+### Problem 1: Modeling mortality in Iraq with count models
+The dataset `iraq.csv` contains survey data on mortality in Iraq from Robertsetal, "Mortality before and after the 2003 invasion of Iraq: a cluster sample survey,"" Lancet, Nov. 20, 2004, 1857-1864. It also contains supplemental data added by your instructor. You should read Roberts et al before starting the assignment.
+
+#### A
+Fit a Poisson regression to the variable `deathpos`. You may use any covariates, transformations or interactions you wish. Be sure to justify your reasoning, and to choose the model that makes most theoretical sense to you.
+
+```{R init, warning=F, message=F}
+rm(list=ls())
+library(tidyverse)
+
+iraqDF <- read_csv("~/Downloads/iraq.csv") 
+m1 <- deathpos ~ sunni + tpctpop
+m2 <- deathpos ~ tpctpop
+m3 <- deathpos ~ sunni
+
+poisGLM <- glm(m1, data=iraqDF, offset=log(iraqDF$permopos))
+```
+
+#### B
+Explore the goodness of fit of the regression you fit in a. Show that the regression you fit dominates at least two plausible alternative specifications. Answering this problem will require you to choose at least two other models, fit them, and show, using tests of your choice, and/or substantive arguments, that your model from a is better.
+
+```{R}
+alt1GLM <- glm(m2, data=iraqDF, offset=log(iraqDF$permopos))
+alt2GLM <- glm(m3, data=iraqDF, offset=log(iraqDF$permopos))
+AIC(poisGLM)
+AIC(alt1GLM)
+AIC(alt2GLM)
+```
+
+### C
+```{R}
+iraqDF %>%
+    ggplot(aes(permopos, deathpos)) +
+    geom_point()
+
+noOutDF <- iraqDF %>%
+    filter(deathpos <= 20)
+
+poisOGLM <- glm(m1, data=noOutDF, offset=log(noOutDF$permopos))
+alt1OGLM <- glm(m2, data=noOutDF, offset=log(noOutDF$permopos))
+alt2OGLM <- glm(m3, data=noOutDF, offset=log(noOutDF$permopos))
+AIC(poisOGLM)
+AIC(alt1OGLM)
+AIC(alt2OGLM)
+```
+
+```{R}
+mle.nb <- function(formula, data){
+    X <- model.matrix(formula[-2], data)
+    stvals <- rep(0, ncol(X)+1)
+    y <- unlist(data[,all.vars(formula)[1]])
+    assessNeg <- function(p){
+        betas <- p[1:ncol(X)]
+        alpha <- exp(p[ncol(X)+1])
+        muhat <- c(exp(X %*% betas))
+        -sum(dnbinom(y, mu=muhat, size=alpha^-1, log=T))
+    }
+    fit <- optim(stvals, assessNeg)
+    fit$formula <- formula
+    fit
+}
+
+test <- mle.nb(m1, iraqDF)
+```
